@@ -1,0 +1,235 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Area Pulse Card – test harness</title>
+<script src="icons.js"></script>
+<style>
+  :root {
+    --primary-color: #03a9f4;
+    --primary-text-color: #212121;
+    --secondary-text-color: #727272;
+    --card-background-color: #ffffff;
+    --divider-color: #e0e0e0;
+    --amber-color: #ffc107; --orange-color: #ff9800; --deep-orange-color: #ff6f22;
+    --red-color: #f44336; --green-color: #4caf50; --blue-color: #2196f3; --light-blue-color: #03a9f4;
+    --cyan-color: #00bcd4; --teal-color: #009688; --indigo-color: #3f51b5; --purple-color: #926bc7;
+    --ha-card-border-radius: 12px;
+    font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { margin: 0; padding: 24px; background: #fafafa; }
+  body.dark {
+    --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b;
+    --card-background-color: #1c1c1c; --divider-color: rgba(225,225,225,.12);
+    background: #111111;
+  }
+  .grid { display: grid; grid-template-columns: repeat(3, 380px); gap: 16px; align-items: start; }
+  .cap { font: 12px system-ui; color: var(--secondary-text-color); margin: 0 0 6px 2px; }
+  #log { font: 12px monospace; color: var(--secondary-text-color); margin-top: 16px; white-space: pre-wrap; }
+</style>
+<script>
+  // --- Stubs for HA's own elements -------------------------------------------------
+  const ALIAS = { "mdi:molecule-co2": "mdi:molecule-co-2" };
+  class HaIcon extends HTMLElement {
+    static get observedAttributes() { return ["icon"]; }
+    set icon(v) { this._icon = v; this.draw(); } get icon() { return this._icon; }
+    attributeChangedCallback() { this._icon = this.getAttribute("icon"); this.draw(); }
+    connectedCallback() { this.style.display = "inline-flex"; this.draw(); }
+    draw() {
+      if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+      const p = window.MDI[ALIAS[this._icon] || this._icon];
+      const s = "var(--mdc-icon-size, 24px)";
+      this.shadowRoot.innerHTML = p ? `<svg viewBox="0 0 24 24" style="width:${s};height:${s};fill:currentColor"><path d="${p}"/></svg>` : `<span style="width:${s};height:${s};display:inline-block;background:red"></span>`;
+    }
+  }
+  customElements.define("ha-icon", HaIcon);
+  class HaStateIcon extends HaIcon {
+    set stateObj(s) { const d = s.entity_id.split(".")[0]; const dc = s.attributes.device_class;
+      this.icon = s.attributes.icon || ({ window: s.state === "on" ? "mdi:window-open-variant" : "mdi:window-closed-variant", door: s.state === "on" ? "mdi:door-open" : "mdi:door-closed", moisture: "mdi:water-alert" })[dc] || ({ light: s.state === "on" ? "mdi:lightbulb-on" : "mdi:lightbulb", switch: "mdi:power-socket-eu", media_player: "mdi:speaker", binary_sensor: dc === "motion" || dc === "occupancy" || dc === "presence" ? "mdi:motion-sensor" : undefined })[d] || "mdi:gauge"; }
+  }
+  customElements.define("ha-state-icon", HaStateIcon);
+  class HaCard extends HTMLElement {
+    constructor() { super(); this.attachShadow({ mode: "open" }).innerHTML = `<style>:host{display:block;background:var(--ha-card-background,var(--card-background-color));
+      border-radius:var(--ha-card-border-radius,12px);border:var(--ha-card-border-width,1px) solid var(--ha-card-border-color,var(--divider-color));
+      color:var(--primary-text-color);box-sizing:border-box;box-shadow:var(--ha-card-box-shadow,none);-webkit-backdrop-filter:var(--ha-card-backdrop-filter,none);backdrop-filter:var(--ha-card-backdrop-filter,none)}</style><slot></slot>`; }
+  }
+  customElements.define("ha-card", HaCard);
+</script>
+<script type="module">
+
+  // ?theme=pulse|glass|tonal applies a Pulse theme from the sibling pulse-theme repo, the way HA does.
+  {
+    const q = new URLSearchParams(location.search);
+    if (q.get("theme")) {
+      const { applyPulseTheme } = await import("../../../../pulse-theme/test/apply-theme.mjs");
+      await applyPulseTheme(q.get("theme"), q.has("dark"), document.body);
+      document.body.style.background = "var(--lovelace-background, var(--primary-background-color))";
+      document.body.style.fontFamily = "var(--ha-font-family-body)";
+    }
+  }
+  import "../../../dist/pulse-cards.js";
+
+  const now = Date.now();
+  const ago = (m) => new Date(now - m * 60000).toISOString();
+  const st = (entity_id, state, attributes = {}, minsAgo = 5) => ({ entity_id, state, attributes, last_changed: ago(minsAgo), last_updated: ago(minsAgo) });
+
+  const states = {};
+  const entities = {};
+  const add = (s, area, extra = {}) => { states[s.entity_id] = s; entities[s.entity_id] = { entity_id: s.entity_id, area_id: area, ...extra }; };
+
+  // Living room: occupied, lights on, a window open, media playing, climate heating, CO2 + illuminance.
+  add(st("binary_sensor.living_room_presence", "on", { friendly_name: "Living Room Presence", device_class: "occupancy" }, 12), "living_room", { labels: ["on_card"] });
+  add(st("binary_sensor.living_room_motion", "on", { friendly_name: "Living Room Motion", device_class: "motion" }, 1), "living_room", { labels: ["on_card"] });
+  add(st("sensor.living_room_temperature", "22.4", { friendly_name: "Living Room Temperature", device_class: "temperature", unit_of_measurement: "°C" }), "living_room", { labels: ["on_card"] });
+  add(st("sensor.living_room_tv_temp", "22.8", { friendly_name: "TV area temperature", device_class: "temperature", unit_of_measurement: "°C" }), "living_room");
+  add(st("sensor.living_room_humidity", "47", { friendly_name: "Living Room Humidity", device_class: "humidity", unit_of_measurement: "%" }), "living_room", { labels: ["on_card"] });
+  add(st("sensor.living_room_co2", "1120", { friendly_name: "Living Room CO2", device_class: "carbon_dioxide", unit_of_measurement: "ppm" }), "living_room");
+  add(st("sensor.living_room_lux", "184", { friendly_name: "Living Room Illuminance", device_class: "illuminance", unit_of_measurement: "lx" }), "living_room");
+  add(st("binary_sensor.living_room_window_left", "on", { friendly_name: "Living Room Window Left", device_class: "window" }, 34), "living_room", { device_id: "dev_window_left" });
+  add(st("binary_sensor.living_room_window_right", "off", { friendly_name: "Living Room Window Right", device_class: "window" }, 300), "living_room");
+  add(st("binary_sensor.balcony_door", "off", { friendly_name: "Balcony Door", device_class: "door" }, 90), "living_room");
+  const glow = new URLSearchParams(location.search).get("rgb");
+  const ceilingRgb = glow ? glow.split(",").map(Number) : [146, 98, 255];
+  add(st("light.living_room_ceiling", "on", { friendly_name: "Living Room Ceiling", rgb_color: ceilingRgb, brightness: 220, supported_color_modes: ["rgb"] }, 40), "living_room", { labels: ["on_card"] });
+  add(st("light.living_room_floor_lamp", "on", { friendly_name: "Living Room Floor Lamp", color_temp_kelvin: 2700, brightness: 150, supported_color_modes: ["color_temp"] }, 40), "living_room");
+  add(st("light.living_room_led_strip", "off", { friendly_name: "Living Room LED Strip", supported_color_modes: ["rgb"] }, 400), "living_room");
+  add(st("switch.living_room_tv_plug", "on", { friendly_name: "Living Room TV Plug", device_class: "outlet" }, 180), "living_room");
+  add(st("switch.living_room_heater_plug", "off", { friendly_name: "Living Room Heater Plug", device_class: "outlet" }, 900), "living_room");
+  add(st("media_player.sonos_beam", "playing", { friendly_name: "Sonos Beam", media_title: "Midnight City" }, 8), "living_room");
+  add(st("climate.living_room_ac", "heat", { friendly_name: "Living Room AC", hvac_action: "heating", temperature: 23 }, 20), "living_room");
+  add(st("cover.living_room_blinds", "closed", { friendly_name: "Living Room Blinds" }, 500), "living_room");
+  add(st("sensor.living_room_window_left_battery", "14", { friendly_name: "Window Left Battery", device_class: "battery", unit_of_measurement: "%" }), "living_room", { entity_category: "diagnostic", device_id: "dev_window_left" });
+  add(st("vacuum.roborock", "docked", { friendly_name: "Roborock" }), "hallway");
+  add(st("scene.living_room_movie", "2026-10-01T20:00:00", { friendly_name: "Movie Night" }), "living_room");
+
+  // Noise: the long tail of sensors a real area accumulates.
+  for (let i = 0; i < 40; i++) add(st(`sensor.living_room_noise_${i}`, String(i), { friendly_name: `Noise ${i}`, device_class: "power", unit_of_measurement: "W" }), "living_room", { labels: i % 5 === 0 ? ["noisy"] : [] });
+  add(st("binary_sensor.living_room_tv_motion", "on", { friendly_name: "TV Motion", device_class: "motion" }, 3), "living_room", { labels: ["on_card", "noisy"] });
+
+  // Kitchen: water leak alert, clear, warm.
+  add(st("binary_sensor.kitchen_motion", "off", { friendly_name: "Kitchen Motion", device_class: "motion" }, 47), "kitchen");
+  add(st("binary_sensor.kitchen_sink_leak", "on", { friendly_name: "Kitchen Sink Leak", device_class: "moisture" }, 2), "kitchen");
+  add(st("sensor.kitchen_temperature", "26.1", { friendly_name: "Kitchen Temperature", device_class: "temperature", unit_of_measurement: "°C" }), "kitchen");
+  add(st("sensor.kitchen_humidity", "71", { friendly_name: "Kitchen Humidity", device_class: "humidity", unit_of_measurement: "%" }), "kitchen");
+  add(st("light.kitchen", "off", { friendly_name: "Kitchen Lights", supported_color_modes: ["brightness"] }, 47), "kitchen");
+  add(st("binary_sensor.kitchen_window", "off", { friendly_name: "Kitchen Window", device_class: "window" }, 600), "kitchen");
+
+  // Bedroom: clear, cold, compact.
+  add(st("binary_sensor.bedroom_presence", "off", { friendly_name: "Bedroom Presence", device_class: "presence" }, 125), "bedroom");
+  add(st("sensor.bedroom_temperature", "18.2", { friendly_name: "Bedroom Temperature", device_class: "temperature", unit_of_measurement: "°C" }), "bedroom");
+  add(st("sensor.bedroom_humidity", "31", { friendly_name: "Bedroom Humidity", device_class: "humidity", unit_of_measurement: "%" }), "bedroom");
+  add(st("light.bedroom", "on", { friendly_name: "Bedroom Light", color_temp_kelvin: 2200, brightness: 90, supported_color_modes: ["color_temp"] }, 15), "bedroom");
+  add(st("sensor.bedroom_humidity_2", "29", { friendly_name: "Bedroom Humidity", device_class: "humidity", unit_of_measurement: "%" }), "hallway");
+  add(st("lock.bedroom_balcony", "unlocked", { friendly_name: "Bedroom Balcony Lock" }, 30), "bedroom");
+  add(st("cover.bedroom_shutter", "open", { friendly_name: "Bedroom Shutter" }, 400), "bedroom");
+
+
+  // Den: a realistic busy room for the room popup (long device-prefixed names, a dead bulb, a low battery).
+  const D = "den";
+  add(st("light.den_tv", "on", { friendly_name: "Den TV", rgb_color: [255, 190, 150], brightness: 255, supported_color_modes: ["rgb"] }, 1), D);
+  add(st("light.den_tv_table", "on", { friendly_name: "TV Table", rgb_color: [255, 190, 150], brightness: 255, supported_color_modes: ["rgb"] }, 1), D);
+  add(st("light.den_ceiling", "off", { friendly_name: "Square Ceiling Light", supported_color_modes: ["brightness"] }, 1), D);
+  add(st("light.den_strip", "off", { friendly_name: "Workstation Led Strip", supported_color_modes: ["rgb"] }, 8), D);
+  add(st("light.den_dead_bulb", "unavailable", { friendly_name: "Den Hall Bulb", supported_color_modes: ["brightness"] }, 60), D);
+  add(st("switch.den_purifier", "on", { friendly_name: "Air Purifier Status" }, 17), D);
+  add(st("switch.den_dehumidifier", "off", { friendly_name: "Dehumidifier Power" }, 2880), D);
+  add(st("media_player.den", "paused", { friendly_name: "Den", media_title: "Stera 96.6" }, 120), D);
+  add(st("binary_sensor.den_door", "on", { friendly_name: "Sonoff Catch(Den) Door", device_class: "door" }, 540), D, { device_id: "dev_catch" });
+  add(st("sensor.den_door_battery", "9", { friendly_name: "Sonoff Catch(Den) Door Battery", device_class: "battery", unit_of_measurement: "%" }), D, { device_id: "dev_catch", entity_category: "diagnostic" });
+  add(st("binary_sensor.den_workstation", "on", { friendly_name: "Workstation Presence", device_class: "presence" }, 1440), D);
+  add(st("binary_sensor.den_motion", "off", { friendly_name: "Aqara Motion(Den) Occupancy", device_class: "occupancy" }, 40), D);
+  add(st("binary_sensor.den_balcony_dry", "off", { friendly_name: "Front Balcony Large Dry", device_class: "moisture" }, 1440), D);
+  add(st("sensor.den_moisture", "100", { friendly_name: "Front Balcony Large Moisture", device_class: "moisture", unit_of_measurement: "%" }), D);
+  add(st("sensor.den_temperature", "24.4", { friendly_name: "Sonoff Temperature(Den) Temperature", device_class: "temperature", unit_of_measurement: "°C" }), D, { device_id: "dev_sonoff" });
+  add(st("sensor.den_humidity", "31.8", { friendly_name: "Sonoff Temperature(Den) Humidity", device_class: "humidity", unit_of_measurement: "%" }), D, { device_id: "dev_sonoff" });
+  add(st("sensor.den_lux_moes", "133", { friendly_name: "Moes Presence(Den) Illuminance", device_class: "illuminance", unit_of_measurement: "lx" }), D, { device_id: "dev_moes" });
+  add(st("sensor.den_lux_aqara", "8", { friendly_name: "Aqara Motion(Den) Illuminance", device_class: "illuminance", unit_of_measurement: "lx" }), D, { device_id: "dev_aqara" });
+  // Things you run, and a media player that drops off the network when it's switched off.
+  add(st("scene.den_focus", "unknown", { friendly_name: "Den Focus" }), D);
+  add(st("scene.den_evening", ago(95), { friendly_name: "Den Evening" }, 95), D);
+  add(st("script.den_wind_down", "off", { friendly_name: "Wind Down", last_triggered: ago(1500) }), D);
+  add(st("media_player.den_tv_box", "unavailable", { friendly_name: "Den TV Box" }, 300), D);
+  add(st("sensor.den_pm25", "9", { friendly_name: "Xiaomi Air Purifier Environment PM2.5", device_class: "pm25", unit_of_measurement: "µg/m³" }), D);
+  for (let i = 0; i < 24; i++) add(st(`sensor.den_node_${i}`, String(i * 3), { friendly_name: `Den Node ${i} Power`, device_class: "power", unit_of_measurement: "W" }), D, { labels: i < 3 ? ["on_card"] : [] });
+
+  const areas = {
+    living_room: { area_id: "living_room", name: "Living Room", icon: "mdi:sofa" },
+    kitchen: { area_id: "kitchen", name: "Kitchen", icon: "mdi:stove" },
+    bedroom: { area_id: "bedroom", name: "Bedroom", icon: "mdi:bed" },
+    hallway: { area_id: "hallway", name: "Hallway" },
+    den: { area_id: "den", name: "Den", icon: "mdi:desk" },
+  };
+
+  const calls = [];
+  const lang = new URLSearchParams(location.search).get("lang") || "en";
+  window.hass = {
+    states, entities, areas,
+    devices: {
+      dev_window_left: { id: "dev_window_left", area_id: "living_room", labels: ["on_card"] },
+      dev_catch: { id: "dev_catch", area_id: "den", name: "Sonoff Catch(Den)" },
+      dev_sonoff: { id: "dev_sonoff", area_id: "den", name: "Sonoff Temperature(Den)" },
+      dev_moes: { id: "dev_moes", area_id: "den", name: "Moes Presence(Den)" },
+      dev_aqara: { id: "dev_aqara", area_id: "den", name: "Aqara Motion(Den)" },
+    },
+    callWS: async (msg) => { if (msg.type === "config/label_registry/list") return [{ label_id: "on_card", name: "On card" }, { label_id: "noisy", name: "Noisy" }]; throw new Error("unexpected " + msg.type); }, language: lang, locale: { language: lang },
+    callService: async (...a) => calls.push(a),
+    formatEntityState: (s) => ({ on: "On", off: "Off", playing: "Playing", paused: "Paused", unavailable: "Unavailable", unlocked: "Unlocked", open: "Open", closed: "Closed" })[s.state] ?? (s.attributes.unit_of_measurement ? `${s.state} ${s.attributes.unit_of_measurement}` : s.state),
+  };
+  if (new URLSearchParams(location.search).get("dark")) { document.body.classList.add("dark"); window.hass.themes = { darkMode: true }; }
+  // Optional stand-in for HA's card helpers, to exercise the native-tile path.
+  window.tileConfigs = [];
+  if (new URLSearchParams(location.search).get("helpers")) {
+    customElements.define("stub-tile", class extends HTMLElement {
+      set hass(h) { this._h = h; this.draw(); }
+      // A rough stand-in for HA's tile: name, state line (honours hide_state / state_content), a slider for
+      // light-brightness, other features by name, and the tap action.
+      draw() { if (!this._h || !this.config) return; const c = this.config, s = this._h.states[c.entity];
+        const rel = (v) => { const t = Date.parse(v); if (!/\d{4}-\d\d-\d\dT/.test(String(v)) || Number.isNaN(t)) return v; const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `${m} minutes ago` : `${Math.round(m / 60)} hours ago`; };
+        const line = c.hide_state ? "" : rel(c.state_content ? s.attributes[c.state_content] : s.state);
+        const pct = Math.round(((s.attributes.brightness ?? 0) * 100) / 255);
+        const feats = (c.features ?? []).map((f) => f.type === "light-brightness"
+          ? `<div style="flex:0 0 96px;height:28px;border-radius:10px;background:color-mix(in srgb,var(--primary-text-color) 10%,transparent);overflow:hidden"><div style="height:100%;width:${pct}%;background:color-mix(in srgb,var(--pulse-active,#ffc107) 55%,transparent)"></div></div>`
+          : `<span style="font-size:11px;opacity:.6">${f.type}</span>`).join("");
+        const tap = c.tap_action ? `<span style="font-size:11px;opacity:.6">tap: ${c.tap_action.perform_action || c.tap_action.action}</span>` : "";
+        this.style.cssText = "display:flex;align-items:center;gap:10px;min-height:44px;padding:8px 12px;border-radius:12px;border:1px dashed var(--divider-color);font:13px system-ui;box-sizing:border-box";
+        this.innerHTML = `<div style="flex:1;min-width:0"><div style="font-weight:500">${c.name}</div>${line ? `<div style="font-size:12px;opacity:.7">${line}</div>` : ""}</div>${tap}${feats}`; }
+      setConfig(c) { this.config = c; this.draw(); }
+    });
+    window.loadCardHelpers = async () => ({ createCardElement: (c) => { window.tileConfigs.push(c); const el = document.createElement("stub-tile"); el.config = c; return el; } });
+  }
+
+  const configs = [
+    { type: "custom:area-pulse-card", area: "living_room", sensor_classes: ["carbon_dioxide", "illuminance"],
+      actions: [{ preset: "lights_toggle" }, { entity: "scene.living_room_movie", name: "Movie", icon: "mdi:movie-open" }, { preset: "vacuum_area", entity: "vacuum.roborock" }, { preset: "everything_off" }],
+      tap_action: { action: "navigate", navigation_path: "/dashboard-home/living-room" } },
+    { type: "custom:area-pulse-card", area: "living_room", sensor_classes: ["power"], show_inactive: true, label_filter: { include: "On card", exclude: "Noisy" }, actions: [{ preset: "lights_toggle" }] },
+    { type: "custom:area-pulse-card", area: "living_room", label_filter: { include: "does_not_exist" } },
+    { type: "custom:area-pulse-card", area: "kitchen", show_inactive: true, actions: [{ preset: "lights_on" }, { preset: "lights_off" }] },
+    { type: "custom:area-pulse-card", area: "den", actions: [{ preset: "lights_toggle" }] },
+    { type: "custom:area-pulse-card", area: "bedroom", layout: "compact", show_inactive: true, actions: [{ preset: "lights_toggle" }, { preset: "covers_close" }, { preset: "everything_off" }] },
+    // The original look: one colour per kind of device, every chip in two rows.
+    { type: "custom:area-pulse-card", area: "living_room", sensor_classes: ["carbon_dioxide", "illuminance"], chip_colors: "category", max_chips: 0, actions: [{ preset: "lights_toggle" }] },
+  ];
+  const grid = document.querySelector(".grid");
+  window.cards = configs.map((c) => {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `<div class="cap">${c.area}${c.layout ? " · " + c.layout : ""}</div>`;
+    const card = document.createElement("area-pulse-card");
+    card.setConfig(c);
+    card.hass = window.hass;
+    wrap.appendChild(card);
+    grid.appendChild(wrap);
+    return card;
+  });
+  window.events = [];
+  for (const ev of ["hass-action", "hass-more-info"]) document.addEventListener(ev, (e) => window.events.push({ type: ev, detail: e.detail }));
+  window.harnessReady = true;
+</script>
+</head>
+<body>
+  <div class="grid"></div>
+  <div id="log"></div>
+</body>
+</html>

@@ -1,0 +1,252 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Tile Pulse Card – test harness</title>
+<script src="icons.js"></script>
+<style>
+  :root {
+    --primary-color: #03a9f4;
+    --primary-text-color: #212121;
+    --secondary-text-color: #727272;
+    --text-primary-color: #ffffff;
+    --card-background-color: #ffffff;
+    --divider-color: #e0e0e0;
+    --amber-color: #ffc107; --orange-color: #ff9800; --deep-orange-color: #ff6f22;
+    --red-color: #f44336; --green-color: #4caf50; --blue-color: #2196f3; --light-blue-color: #03a9f4;
+    --cyan-color: #00bcd4; --teal-color: #009688; --indigo-color: #3f51b5; --purple-color: #926bc7;
+    --pink-color: #e91e63; --white-color: #ffffff;
+    /* A few of HA's state colours, so the main icon is tinted like a native tile. */
+    --state-active-color: var(--amber-color);
+    --state-fan-active-color: var(--cyan-color);
+    --state-climate-heat-color: var(--deep-orange-color);
+    --state-climate-cool-color: var(--blue-color);
+    --state-switch-active-color: var(--amber-color);
+    --state-light-active-color: var(--amber-color);
+    --ha-card-border-radius: 12px;
+    font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { margin: 0; padding: 24px; background: #fafafa; }
+  body.dark {
+    --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b;
+    --card-background-color: #1c1c1c; --divider-color: rgba(225,225,225,.12);
+    --white-color: #e1e1e1;
+    background: #111111;
+  }
+  .grid { display: grid; grid-template-columns: repeat(3, 380px); gap: 24px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 16px; }
+  .cap { font: 12px system-ui; color: var(--secondary-text-color); margin: 0 0 6px 2px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #log { font: 12px monospace; color: var(--secondary-text-color); margin-top: 16px; white-space: pre-wrap; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } body { padding: 12px; } }
+</style>
+<script>
+  // --- Stubs for HA's own elements (same as the other Pulse card harnesses) ----------
+  class HaIcon extends HTMLElement {
+    static get observedAttributes() { return ["icon"]; }
+    set icon(v) { this._icon = v; this.draw(); } get icon() { return this._icon; }
+    attributeChangedCallback() { this._icon = this.getAttribute("icon"); this.draw(); }
+    connectedCallback() { this.style.display = "inline-flex"; this.draw(); }
+    draw() {
+      if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+      const p = window.MDI[this._icon];
+      const s = "var(--mdc-icon-size, 24px)";
+      if (this._icon && !p) console.warn("missing icon", this._icon);
+      this.shadowRoot.innerHTML = p ? `<svg viewBox="0 0 24 24" style="width:${s};height:${s};fill:currentColor"><path d="${p}"/></svg>` : `<span style="width:${s};height:${s};display:inline-block;background:red"></span>`;
+    }
+  }
+  customElements.define("ha-icon", HaIcon);
+  class HaStateIcon extends HaIcon {
+    set stateObj(s) {
+      const d = s.entity_id.split(".")[0];
+      const on = s.state !== "off";
+      this.icon = s.attributes.icon
+        || ({ light: on ? "mdi:lightbulb-on" : "mdi:lightbulb", fan: on ? "mdi:fan" : "mdi:fan-off", climate: "mdi:thermostat", switch: on ? "mdi:toggle-switch-variant" : "mdi:toggle-switch-variant-off", humidifier: "mdi:air-humidifier", select: "mdi:format-list-bulleted", scene: "mdi:palette", script: "mdi:script-text" })[d]
+        || "mdi:gauge";
+    }
+  }
+  customElements.define("ha-state-icon", HaStateIcon);
+  class HaCard extends HTMLElement {
+    constructor() { super(); this.attachShadow({ mode: "open" }).innerHTML = `<style>:host{display:block;background:var(--ha-card-background,var(--card-background-color));
+      border-radius:var(--ha-card-border-radius,12px);border:var(--ha-card-border-width,1px) solid var(--ha-card-border-color,var(--divider-color));
+      color:var(--primary-text-color);box-sizing:border-box;box-shadow:var(--ha-card-box-shadow,none);-webkit-backdrop-filter:var(--ha-card-backdrop-filter,none);backdrop-filter:var(--ha-card-backdrop-filter,none)}</style><slot></slot>`; }
+  }
+  customElements.define("ha-card", HaCard);
+</script>
+<script type="module">
+  // ?theme=pulse|glass|tonal applies a Pulse theme from the sibling pulse-theme repo, the way HA does.
+  {
+    const q = new URLSearchParams(location.search);
+    if (q.get("theme")) {
+      const { applyPulseTheme } = await import("../../../../pulse-theme/test/apply-theme.mjs");
+      await applyPulseTheme(q.get("theme"), q.has("dark"), document.body);
+      document.body.style.background = "var(--lovelace-background, var(--primary-background-color))";
+      document.body.style.fontFamily = "var(--ha-font-family-body)";
+    }
+  }
+  import "../../../dist/pulse-cards.js";
+
+  const q = new URLSearchParams(location.search);
+  if (q.has("dark")) document.body.classList.add("dark");
+  const lang = q.get("lang") || "en";
+  const now = Date.now();
+  const ago = (m) => new Date(now - m * 60000).toISOString();
+
+  // An invented home. Never put real entity ids, names or photos here.
+  const states = {};
+  const entities = {};
+  const add = (entity_id, state, attributes = {}, minsAgo = 5, reg = {}) => {
+    states[entity_id] = { entity_id, state, attributes, last_changed: ago(minsAgo), last_updated: ago(minsAgo) };
+    entities[entity_id] = { entity_id, ...reg };
+  };
+  // Living room purifier: an on/off switch plus a mode select on the same device (the zero-config case).
+  add("switch.living_purifier", "on", { friendly_name: "Living Room Air Purifier", icon: "mdi:air-purifier" }, 0.4, { device_id: "dev_living_purifier" });
+  add("select.living_purifier_mode", "Auto", { friendly_name: "Living Room Air Purifier Mode", options: ["Sleep", "Manual", "Auto"] }, 30, { device_id: "dev_living_purifier", entity_category: "config" });
+  add("sensor.living_purifier_pm25", "7", { friendly_name: "PM2.5", unit_of_measurement: "µg/m³", device_class: "pm25" }, 2, { device_id: "dev_living_purifier" });
+  // Bedroom purifier: buttons set an unrelated-looking select (fan level) with its own names.
+  add("switch.bedroom_purifier", "on", { friendly_name: "Bedroom Air Purifier", icon: "mdi:air-purifier" }, 26 * 60);
+  add("select.bedroom_purifier_level", "sleep", { friendly_name: "Bedroom Purifier Level", options: ["sleep", "low", "high"] }, 26 * 60);
+  // Off purifier, buttons hidden while off.
+  add("switch.office_purifier", "off", { friendly_name: "Office Air Purifier", icon: "mdi:air-purifier" }, 180);
+  add("select.office_purifier_mode", "Auto", { options: ["Sleep", "Manual", "Auto"] }, 180, { device_id: "dev_office" });
+  // A fan with presets of its own, and a sensor for the line under the name.
+  add("fan.office_fan", "on", { friendly_name: "Office Fan", preset_modes: ["auto", "sleep", "turbo"], preset_mode: "sleep", percentage: 40 }, 12);
+  add("sensor.office_pm25", "12", { friendly_name: "Office PM2.5", unit_of_measurement: "µg/m³" }, 1);
+  // A thermostat: its HVAC modes become the buttons.
+  add("climate.kids_room", "heat", { friendly_name: "Kids' Room", hvac_modes: ["off", "heat", "cool", "auto"], current_temperature: 21.5, temperature: 22 }, 95);
+  // Kitchen: a light with unrelated buttons (a scene, a script, the hood, a view).
+  add("light.kitchen", "on", { friendly_name: "Kitchen", supported_color_modes: ["brightness"] }, 15);
+  add("scene.kitchen_cooking", "2026-10-09T18:00:00Z", { friendly_name: "Cooking" }, 900);
+  add("script.coffee", "off", { friendly_name: "Coffee" }, 600);
+  add("switch.kitchen_hood", "on", { friendly_name: "Hood", icon: "mdi:stove" }, 8);
+  // A humidifier select with six levels (icon-only, 3 per row).
+  add("humidifier.nursery", "on", { friendly_name: "Nursery Humidifier", available_modes: ["auto", "sleep", "low", "medium", "high", "boost"], mode: "low" }, 40);
+  // A purifier whose mode select is unavailable.
+  add("switch.hall_purifier", "on", { friendly_name: "Hall Air Purifier", icon: "mdi:air-purifier" }, 50, { device_id: "dev_hall" });
+  add("select.hall_purifier_mode", "unavailable", { options: ["Sleep", "Manual", "Auto"] }, 50, { device_id: "dev_hall" });
+
+  const EL = { on: "Ενεργό", off: "Ανενεργό", heat: "Θέρμανση", cool: "Ψύξη", auto: "Αυτόματο", unavailable: "Μη διαθέσιμο" };
+  const fmt = (s, state = s.state) => {
+    const unit = s.attributes.unit_of_measurement;
+    if (unit && state === s.state) return `${state} ${unit}`;
+    if (s.entity_id.startsWith("scene.") && state === s.state) return "Scene";
+    if (lang === "el" && EL[state]) return EL[state];
+    const v = String(state).replace(/_/g, " ");
+    return v.charAt(0).toUpperCase() + v.slice(1);
+  };
+  const fmtAttr = (s, attr, v = s.attributes[attr]) => attr === "percentage" ? `${v} %` : fmt(s, v);
+
+  let cards = [];
+  function makeHass() {
+    return {
+      states: { ...states },
+      entities,
+      language: lang,
+      locale: { language: lang, time_format: "24" },
+      themes: { darkMode: document.body.classList.contains("dark") },
+      callService: async (...a) => log("callService", a),
+      formatEntityState: fmt,
+      formatEntityAttributeValue: fmtAttr,
+    };
+  }
+  // A small fake of HA's action handler: options and toggles answer after a short delay, so the
+  // "breathing" pending state and the lit button can be seen.
+  function setState(id, patch) {
+    const s = states[id];
+    states[id] = { ...s, ...patch, attributes: { ...s.attributes, ...(patch.attributes ?? {}) }, last_changed: new Date().toISOString(), last_updated: new Date().toISOString() };
+  }
+  function handle(detail) {
+    const cfg = detail.config[`${detail.action}_action`];
+    log("hass-action", detail.action, cfg);
+    if (!cfg) return;
+    const id = cfg.target?.entity_id ?? detail.config.entity;
+    setTimeout(() => {
+      if (cfg.action === "toggle") setState(id, { state: states[id].state === "on" ? "off" : "on" });
+      else if (cfg.action === "perform-action") {
+        const [, svc] = cfg.perform_action.split(".");
+        const d = cfg.data ?? {};
+        if (svc === "select_option") setState(id, { state: d.option });
+        else if (svc === "set_preset_mode") setState(id, { attributes: { preset_mode: d.preset_mode } });
+        else if (svc === "set_hvac_mode") setState(id, { state: d.hvac_mode });
+        else if (svc === "set_mode") setState(id, { attributes: { mode: d.mode } });
+        else return;
+      } else return;
+      const hass = makeHass();
+      for (const c of cards) c.hass = hass;
+    }, 900);
+  }
+
+  const scenarios = [
+    { col: 0, cap: "Zero config: just the purifier switch. Its device's mode select becomes the buttons; the current mode is lit.", config: { entity: "switch.living_purifier" } },
+    {
+      col: 0,
+      cap: "Buttons that set another entity (a level select), with their own names and icons",
+      config: {
+        entity: "switch.bedroom_purifier",
+        action_entity: "select.bedroom_purifier_level",
+        actions: [
+          { option: "sleep", name: "Sleep", icon: "mdi:power-sleep" },
+          { option: "low", name: "Low", icon: "mdi:fan-speed-1" },
+          { option: "high", name: "High", icon: "mdi:fan-chevron-up" },
+        ],
+      },
+    },
+    { col: 0, cap: "Off, with hide_actions_when_off: just the tile", config: { entity: "switch.office_purifier", action_entity: "select.office_purifier_mode", hide_actions_when_off: true } },
+    {
+      col: 1,
+      cap: "Side by side (vertical: false), a fan's own presets, PM2.5 in the line",
+      config: { entity: "fan.office_fan", vertical: false, state_content: ["state", "percentage", "sensor.office_pm25"] },
+    },
+    { col: 1, cap: "A thermostat: its HVAC modes, in its state colour", config: { entity: "climate.kids_room", state_content: ["state", "current_temperature"] } },
+    {
+      col: 1,
+      cap: "Unrelated buttons: a scene, a script, the hood (on, lit), a view",
+      config: {
+        entity: "light.kitchen",
+        vertical: false,
+        actions: [
+          { entity: "scene.kitchen_cooking", icon: "mdi:chef-hat" },
+          { entity: "script.coffee", icon: "mdi:coffee" },
+          { entity: "switch.kitchen_hood", color: "teal" },
+          { name: "Recipes", icon: "mdi:book-open-variant", tap_action: { action: "navigate", navigation_path: "recipes" } },
+        ],
+      },
+    },
+    { col: 2, cap: "Six modes, icon-only, 3 per row", config: { entity: "humidifier.nursery", show_names: false, columns: 3 } },
+    { col: 2, cap: "The mode select is unavailable: buttons dimmed", config: { entity: "switch.hall_purifier" } },
+    { col: 2, cap: "Half-width cards in a sections view: names go under the icons", pair: true, configs: [{ entity: "switch.living_purifier" }, { entity: "fan.office_fan" }] },
+  ];
+
+  const logEl = document.getElementById("log");
+  function log(...a) { logEl.textContent += a.map((x) => typeof x === "string" ? x : JSON.stringify(x)).join(" ") + "\n"; }
+
+  const cols = [...document.querySelectorAll(".col")];
+  const hass = makeHass();
+  const make = (config) => {
+    const card = document.createElement("tile-pulse-card");
+    card.setConfig({ type: "custom:tile-pulse-card", ...config });
+    card.hass = hass;
+    card.addEventListener("hass-action", (e) => handle(e.detail));
+    cards.push(card);
+    return card;
+  };
+  for (const s of scenarios) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = s.cap ? `<p class="cap">${s.cap}</p>` : "";
+    if (s.pair) {
+      const pair = document.createElement("div");
+      pair.className = "pair";
+      for (const c of s.configs) pair.appendChild(make(c));
+      wrap.appendChild(pair);
+    } else wrap.appendChild(make(s.config));
+    cols[s.col].appendChild(wrap);
+  }
+</script>
+</head>
+<body>
+  <div class="grid"><div class="col"></div><div class="col"></div><div class="col"></div></div>
+  <div id="log"></div>
+</body>
+</html>

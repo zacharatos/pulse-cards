@@ -1,0 +1,248 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Home Pulse Card – test harness</title>
+<script src="icons.js"></script>
+<style>
+  :root {
+    --primary-color: #03a9f4;
+    --primary-text-color: #212121;
+    --secondary-text-color: #727272;
+    --text-primary-color: #ffffff;
+    --card-background-color: #ffffff;
+    --divider-color: #e0e0e0;
+    --amber-color: #ffc107; --orange-color: #ff9800; --deep-orange-color: #ff6f22;
+    --red-color: #f44336; --green-color: #4caf50; --blue-color: #2196f3; --light-blue-color: #03a9f4;
+    --cyan-color: #00bcd4; --teal-color: #009688; --indigo-color: #3f51b5; --purple-color: #926bc7;
+    --pink-color: #e91e63; --white-color: #ffffff;
+    --ha-card-border-radius: 12px;
+    font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { margin: 0; padding: 24px; background: #fafafa; }
+  body.dark {
+    --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b;
+    --card-background-color: #1c1c1c; --divider-color: rgba(225,225,225,.12);
+    --white-color: #e1e1e1;
+    background: #111111;
+  }
+  .grid { display: grid; grid-template-columns: repeat(3, 380px); gap: 24px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 16px; }
+  .cap { font: 12px system-ui; color: var(--secondary-text-color); margin: 0 0 6px 2px; }
+  #log { font: 12px monospace; color: var(--secondary-text-color); margin-top: 16px; white-space: pre-wrap; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } body { padding: 12px; } }
+</style>
+<script>
+  // --- Stubs for HA's own elements (same as the Area Pulse Card harness) ----------
+  class HaIcon extends HTMLElement {
+    static get observedAttributes() { return ["icon"]; }
+    set icon(v) { this._icon = v; this.draw(); } get icon() { return this._icon; }
+    attributeChangedCallback() { this._icon = this.getAttribute("icon"); this.draw(); }
+    connectedCallback() { this.style.display = "inline-flex"; this.draw(); }
+    draw() {
+      if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+      const p = window.MDI[this._icon];
+      const s = "var(--mdc-icon-size, 24px)";
+      if (this._icon && !p) console.warn("missing icon", this._icon);
+      this.shadowRoot.innerHTML = p ? `<svg viewBox="0 0 24 24" style="width:${s};height:${s};fill:currentColor"><path d="${p}"/></svg>` : `<span style="width:${s};height:${s};display:inline-block;background:red"></span>`;
+    }
+  }
+  customElements.define("ha-icon", HaIcon);
+  class HaStateIcon extends HaIcon {
+    set stateObj(s) {
+      const d = s.entity_id.split(".")[0];
+      const dc = s.attributes.device_class;
+      this.icon = s.attributes.icon
+        || ({ window: s.state === "on" ? "mdi:window-open-variant" : "mdi:window-closed-variant", door: s.state === "on" ? "mdi:door-open" : "mdi:door-closed", moisture: "mdi:water-alert", battery: "mdi:battery-alert-variant-outline" })[dc]
+        || ({ light: s.state === "on" ? "mdi:lightbulb-on" : "mdi:lightbulb", lock: "mdi:lock-open-variant", media_player: "mdi:speaker", sensor: "mdi:flash" })[d]
+        || "mdi:gauge";
+    }
+  }
+  customElements.define("ha-state-icon", HaStateIcon);
+  class HaCard extends HTMLElement {
+    constructor() { super(); this.attachShadow({ mode: "open" }).innerHTML = `<style>:host{display:block;background:var(--ha-card-background,var(--card-background-color));
+      border-radius:var(--ha-card-border-radius,12px);border:var(--ha-card-border-width,1px) solid var(--ha-card-border-color,var(--divider-color));
+      color:var(--primary-text-color);box-sizing:border-box;box-shadow:var(--ha-card-box-shadow,none);-webkit-backdrop-filter:var(--ha-card-backdrop-filter,none);backdrop-filter:var(--ha-card-backdrop-filter,none)}</style><slot></slot>`; }
+  }
+  customElements.define("ha-card", HaCard);
+</script>
+<script type="module">
+
+  // ?theme=pulse|glass|tonal applies a Pulse theme from the sibling pulse-theme repo, the way HA does.
+  {
+    const q = new URLSearchParams(location.search);
+    if (q.get("theme")) {
+      const { applyPulseTheme } = await import("../../../../pulse-theme/test/apply-theme.mjs");
+      await applyPulseTheme(q.get("theme"), q.has("dark"), document.body);
+      document.body.style.background = "var(--lovelace-background, var(--primary-background-color))";
+      document.body.style.fontFamily = "var(--ha-font-family-body)";
+    }
+  }
+  import "../../../dist/pulse-cards.js";
+
+  const q = new URLSearchParams(location.search);
+  if (q.has("dark")) document.body.classList.add("dark");
+  const lang = q.get("lang") || "en";
+  const now = Date.now();
+  const ago = (m) => new Date(now - m * 60000).toISOString();
+
+  // An invented home. Never put real entity ids, names or photos here.
+  function makeHass(variant = "home", night = false) {
+    const states = {};
+    const entities = {};
+    const add = (entity_id, state, attributes = {}, minsAgo = 5, reg = {}) => {
+      states[entity_id] = { entity_id, state, attributes, last_changed: ago(minsAgo), last_updated: ago(minsAgo) };
+      entities[entity_id] = { entity_id, ...reg };
+    };
+    const away = variant === "away";
+    add("person.alex", away ? "not_home" : "home", { friendly_name: "Alex" });
+    add("person.sam", away ? "not_home" : "Work", { friendly_name: "Sam" });
+    add("person.nikos", "home", { friendly_name: "Nikos" }, 5, { hidden: away });
+    add("sun.sun", night ? "below_horizon" : "above_horizon", { friendly_name: "Sun" });
+    add("weather.home", variant === "alert" ? "rainy" : night ? "clear-night" : "sunny", { friendly_name: "Home", temperature: 24.8, temperature_unit: "°C", supported_features: 1 });
+    add(
+      "alarm_control_panel.house",
+      variant === "alert" ? "armed_away" : "disarmed",
+      { friendly_name: "House alarm", code_format: variant === "alert" ? "number" : null, supported_features: 3 | 4 },
+      variant === "alert" ? 95 : 3 * 24 * 60
+    );
+    add("light.living_ceiling", "on", { friendly_name: "Ceiling", supported_color_modes: ["color_temp"] }, 40, { area_id: "living" });
+    add("light.living_tv", "off", { friendly_name: "TV", supported_color_modes: ["rgb"] }, 200, { area_id: "living" });
+    add("light.living_strip", away ? "on" : "off", { friendly_name: "Workstation LED Strip", supported_color_modes: ["rgb"] }, 20, { area_id: "living" });
+    add("light.bedroom", away ? "on" : "off", { friendly_name: "Bedroom", supported_color_modes: ["brightness"] }, 20, { area_id: "bedroom" });
+    add("light.kitchen", "off", { friendly_name: "Kitchen", supported_color_modes: ["brightness"] }, 300, { area_id: "kitchen" });
+    add("binary_sensor.living_window", "on", { friendly_name: "Living Room Window", device_class: "window" }, 34, { area_id: "living" });
+    add("binary_sensor.bedroom_window", variant === "alert" ? "on" : "off", { friendly_name: "Bedroom Window", device_class: "window" }, 70, { area_id: "bedroom" });
+    add("binary_sensor.front_door", "off", { friendly_name: "Front Door", device_class: "door" }, 600);
+    add("binary_sensor.kitchen_leak", variant === "alert" ? "on" : "off", { friendly_name: "Kitchen Sink Leak", device_class: "moisture" }, 2, { area_id: "kitchen" });
+    add("lock.front", variant === "alert" || away ? "unlocked" : "locked", { friendly_name: "Front Door Lock" }, 30);
+    add("media_player.living", away || variant === "home" ? "playing" : "idle", { friendly_name: "Living Room Speaker", media_title: "Pidao Ta Kimata" }, 8, { area_id: "living" });
+    add("climate.living_ac", "cool", { friendly_name: "Living Room AC", hvac_action: variant === "alert" ? "cooling" : "idle" }, 60, { area_id: "living" });
+    add("sensor.remote_battery", variant === "alert" ? "11" : "64", { friendly_name: "TV Remote Battery", device_class: "battery", unit_of_measurement: "%" }, 60, { entity_category: "diagnostic" });
+    add("switch.vacuum_dock", "on", { friendly_name: "Vacuum Dock" }, 900);
+    add("sensor.grid_power", "1520", { friendly_name: "Grid power", device_class: "power", unit_of_measurement: "W" }, 1);
+    add("sensor.todo_open", "4", { friendly_name: "Open tasks" }, 1);
+    // House modes and the Today line.
+    add("input_select.house_mode", away ? "Away" : night ? "Night" : "Home", { friendly_name: "House mode", options: ["Home", "Away", "Night", "Movie", "Guest"] });
+    for (const [id, name, mins] of [["scene.morning", "Morning", 600], ["scene.movie", "Movie", 30], ["scene.dinner", "Dinner", 240], ["scene.goodnight", "Good night", 1500]])
+      add(id, ago(mins), { friendly_name: name });
+    const local = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:00`;
+    const at = (h, m, dayOffset = 0) => { const d = new Date(now); d.setDate(d.getDate() + dayOffset); d.setHours(h, m, 0, 0); return d; };
+    add("calendar.family", "off", { friendly_name: "Family", message: "Dentist", start_time: local(at(23, 30)), end_time: local(at(23, 59)), all_day: false });
+    add("calendar.bins", "off", { friendly_name: "Bins", message: "Recycling", start_time: local(at(0, 0, 1)), end_time: local(at(0, 0, 2)), all_day: true });
+    add("sensor.waste_glass", "Glass in 1 day", { friendly_name: "Glass", daysTo: 1 });
+    add("light.downstairs_group", "on", { friendly_name: "Downstairs", entity_id: ["light.living_ceiling", "light.kitchen"] }, 1);
+    const fmt = (s) => {
+      if (s.entity_id.startsWith("weather.")) return { sunny: "Sunny", rainy: "Rainy", "clear-night": "Clear" }[s.state] ?? s.state;
+      if (s.entity_id.startsWith("alarm_control_panel.")) return { disarmed: "Disarmed", armed_away: "Armed away" }[s.state] ?? s.state;
+      const unit = s.attributes.unit_of_measurement;
+      return unit ? `${s.state} ${unit}` : s.state.charAt(0).toUpperCase() + s.state.slice(1).replace(/_/g, " ");
+    };
+    return {
+      states,
+      entities,
+      devices: {},
+      areas: {
+        living: { area_id: "living", name: "Living Room" },
+        bedroom: { area_id: "bedroom", name: "Bedroom" },
+        kitchen: { area_id: "kitchen", name: "Kitchen" },
+      },
+      user: { name: "alex demo" },
+      language: lang,
+      locale: { language: lang, time_format: "24" },
+      themes: { darkMode: document.body.classList.contains("dark") },
+      callService: async (...a) => log("callService", a),
+      // Today's forecast for weather.home (daily), the way HA answers weather/subscribe_forecast.
+      connection: {
+        subscribeMessage: async (cb, msg) => {
+          if (msg.type === "weather/subscribe_forecast") {
+            const day = (o) => { const d = new Date(now); d.setDate(d.getDate() + o); d.setHours(12, 0, 0, 0); return d.toISOString(); };
+            setTimeout(() => cb({ type: msg.forecast_type, forecast: [
+              { datetime: day(0), temperature: variant === "alert" ? 21.2 : 27.4, templow: variant === "alert" ? 15.6 : 17.8, condition: "sunny" },
+              { datetime: day(1), temperature: 25, templow: 16, condition: "partlycloudy" },
+            ] }), 20);
+          }
+          return () => {};
+        },
+      },
+      formatEntityState: lang === "en" ? fmt : undefined,
+    };
+  }
+
+  // No colours: the accent on every icon, colour only in the badges that mean something.
+  const shortcuts = [
+    { name: "Lights", icon: "mdi:lightbulb-group", navigation_path: "lights", badge: "lights" },
+    { name: "Devices", icon: "mdi:devices", navigation_path: "devices" },
+    { name: "Security", icon: "mdi:shield-half-full", navigation_path: "security", badge: "locks" },
+    { name: "3D printer", icon: "mdi:printer-3d", navigation_path: "printer", entity: "switch.vacuum_dock" },
+    { name: "Media", icon: "mdi:music-box-multiple", navigation_path: "media", badge: "media" },
+    { name: "Energy", icon: "mdi:chart-timeline-variant-shimmer", navigation_path: "/energy" },
+    { name: "Tasks", icon: "mdi:format-list-checks", navigation_path: "todo", badge: "sensor.todo_open" },
+  ];
+  // Explicit colours are still honoured.
+  const colourful = shortcuts.map((sc, i) => ({ ...sc, color: ["amber", undefined, "blue", "pink", "cyan", "teal", "orange"][i] }));
+
+  // `tag` picks the card: the overview (default) or Home Pulse Shortcuts.
+  const SC = "home-pulse-shortcuts-card";
+  const scenarios = [
+    { col: 0, cap: "Overview + Home Pulse Shortcuts (flat: tiles like native tile cards), the split as a dashboard uses it", variant: "home", config: {} },
+    { col: 0, tag: SC, variant: "home", config: { shortcuts } },
+    { col: 0, cap: "Home Pulse Shortcuts as one card, icon-only, 5 per row", tag: SC, variant: "alert", config: { appearance: "card", show_names: false, columns: 5, shortcuts: shortcuts.slice(0, 5) } },
+    { col: 0, cap: "Home Pulse Shortcuts with nothing configured", tag: SC, variant: "home", config: {} },
+    { col: 1, cap: "Overview with shortcuts in its own config (still supported)", variant: "home", config: { shortcuts } },
+    { col: 1, cap: "Night: moon glow, Night mode lit", variant: "home", night: true, config: { shortcuts: shortcuts.slice(0, 5) } },
+    { col: 2, cap: "Everyone away: window open, door unlocked, lights on → one hint with its fixes", variant: "away", config: {} },
+    {
+      col: 2,
+      cap: "Modes from scenes (last one run is lit), waste sensor in Today",
+      variant: "home",
+      config: {
+        today: { entities: ["sensor.waste_glass"] },
+        modes: [
+          { entity: "scene.morning", color: "amber" },
+          { entity: "scene.movie", color: "purple" },
+          { entity: "scene.dinner", color: "deep-orange" },
+          { entity: "scene.goodnight", icon: "mdi:weather-night", color: "indigo" },
+        ],
+      },
+    },
+    {
+      col: 2,
+      cap: "Flat, centred, icon-only shortcuts with their own colours",
+      variant: "home",
+      config: { appearance: "flat", center_greeting: true, title: "Hello {name}", show_date: false, show_names: false, shortcuts: colourful },
+    },
+    { col: 2, cap: "Leak tripped, alarm armed, compact", variant: "alert", config: { layout: "compact", shortcuts: shortcuts.slice(0, 5) } },
+    {
+      col: 1,
+      cap: "Opt-in blocks: alarm panel and home pulse (colour only for problems, openings and lights)",
+      variant: "alert",
+      config: { sections: ["status", "alarm", "pulse"], pulse: ["alerts", "lights", "windows", "locks", "media", "climate", "batteries"], show_inactive: true },
+    },
+  ];
+
+  const logEl = document.getElementById("log");
+  function log(...a) { logEl.textContent += a.map((x) => typeof x === "string" ? x : JSON.stringify(x)).join(" ") + "\n"; }
+
+  const cols = [...document.querySelectorAll(".col")];
+  for (const s of scenarios) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = s.cap ? `<p class="cap">${s.cap}</p>` : "";
+    const tag = s.tag ?? "home-pulse-card";
+    const card = document.createElement(tag);
+    card.setConfig({ type: `custom:${tag}`, ...s.config });
+    card.hass = makeHass(s.variant, s.night);
+    card.addEventListener("hass-action", (e) => log("hass-action", e.detail.action, e.detail.config[`${e.detail.action}_action`]));
+    card.addEventListener("hass-more-info", (e) => log("more-info", e.detail.entityId));
+    wrap.appendChild(card);
+    cols[s.col].appendChild(wrap);
+  }
+</script>
+</head>
+<body>
+  <div class="grid"><div class="col"></div><div class="col"></div><div class="col"></div></div>
+  <div id="log"></div>
+</body>
+</html>

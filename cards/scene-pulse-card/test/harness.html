@@ -1,0 +1,252 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Scene Pulse Card – test harness</title>
+<script src="icons.js"></script>
+<style>
+  :root {
+    --primary-color: #03a9f4;
+    --primary-text-color: #212121;
+    --secondary-text-color: #727272;
+    --text-primary-color: #ffffff;
+    --card-background-color: #ffffff;
+    --divider-color: #e0e0e0;
+    --amber-color: #ffc107; --orange-color: #ff9800; --red-color: #f44336; --green-color: #4caf50;
+    --ha-card-border-radius: 12px;
+    font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { margin: 0; padding: 24px; background: #fafafa; }
+  body.dark {
+    --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b;
+    --card-background-color: #1c1c1c; --divider-color: rgba(225,225,225,.12);
+    background: #111111;
+  }
+  .grid { display: grid; grid-template-columns: repeat(3, 380px); gap: 24px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 16px; }
+  .cap { font: 12px system-ui; color: var(--secondary-text-color); margin: 0 0 6px 2px; }
+  #log { font: 12px monospace; color: var(--secondary-text-color); margin-top: 16px; white-space: pre-wrap; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); display: none; align-items: center; gap: 16px;
+    padding: 10px 16px; border-radius: 8px; background: #323232; color: #fff; font: 14px system-ui; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+  #toast button { background: none; border: none; color: #8ad4ff; font: 500 14px system-ui; cursor: pointer; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } body { padding: 12px; } }
+</style>
+<script>
+  // --- Stubs for HA's own elements (same as the other Pulse card harnesses) ----------
+  class HaIcon extends HTMLElement {
+    static get observedAttributes() { return ["icon"]; }
+    set icon(v) { this._icon = v; this.draw(); } get icon() { return this._icon; }
+    attributeChangedCallback() { this._icon = this.getAttribute("icon"); this.draw(); }
+    connectedCallback() { this.style.display = "inline-flex"; this.draw(); }
+    draw() {
+      if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+      const p = window.MDI[this._icon];
+      const s = "var(--mdc-icon-size, 24px)";
+      if (this._icon && !p) console.warn("missing icon", this._icon);
+      this.shadowRoot.innerHTML = p ? `<svg viewBox="0 0 24 24" style="width:${s};height:${s};fill:currentColor"><path d="${p}"/></svg>` : `<span style="width:${s};height:${s};display:inline-block;background:red"></span>`;
+    }
+  }
+  customElements.define("ha-icon", HaIcon);
+  class HaCard extends HTMLElement {
+    constructor() { super(); this.attachShadow({ mode: "open" }).innerHTML = `<style>:host{display:block;background:var(--ha-card-background,var(--card-background-color));
+      border-radius:var(--ha-card-border-radius,12px);border:var(--ha-card-border-width,1px) solid var(--ha-card-border-color,var(--divider-color));
+      color:var(--primary-text-color);box-sizing:border-box;box-shadow:var(--ha-card-box-shadow,none);-webkit-backdrop-filter:var(--ha-card-backdrop-filter,none);backdrop-filter:var(--ha-card-backdrop-filter,none)}</style><slot></slot>`; }
+  }
+  customElements.define("ha-card", HaCard);
+</script>
+<script type="module">
+  // ?theme=pulse|glass|tonal applies a Pulse theme from the sibling pulse-theme repo, the way HA does
+  // (serve the parent Projects folder and open /scene-pulse-card/test/harness.html).
+  {
+    const q = new URLSearchParams(location.search);
+    if (q.get("theme")) {
+      const { applyPulseTheme } = await import("../../../../pulse-theme/test/apply-theme.mjs");
+      await applyPulseTheme(q.get("theme"), q.has("dark"), document.body);
+      document.body.style.background = "var(--lovelace-background, var(--primary-background-color))";
+      document.body.style.fontFamily = "var(--ha-font-family-body)";
+    }
+  }
+  await import("../../../dist/pulse-cards.js");
+
+  const q = new URLSearchParams(location.search);
+  if (q.has("dark")) document.body.classList.add("dark");
+  const lang = q.get("lang") || "en";
+  const el = lang === "el";
+  const now = Date.now();
+  const ago = (m) => new Date(now - m * 60000).toISOString();
+
+  // An invented home. Never put real entity ids, names or photos here.
+  const states = {};
+  const entities = {};
+  const add = (entity_id, state, attributes = {}, reg = {}, changedMinsAgo = 60 * 30) => {
+    states[entity_id] = { entity_id, state, attributes, last_changed: ago(changedMinsAgo), last_updated: ago(changedMinsAgo) };
+    entities[entity_id] = { entity_id, ...reg };
+  };
+  // What the scenes set.
+  add("light.sofa_lamp", "on", { friendly_name: el ? "Λάμπα καναπέ" : "Sofa Lamp", brightness: 64, color_mode: "color_temp", color_temp_kelvin: 2200 }, { area_id: "lounge" }, 41);
+  add("light.ceiling_lounge", "off", { friendly_name: el ? "Φως οροφής σαλονιού" : "Lounge Ceiling" }, { area_id: "lounge" }, 41);
+  add("cover.lounge_blind", "closed", { friendly_name: el ? "Ρολό σαλονιού" : "Lounge Blind", current_position: 0 }, { area_id: "lounge" }, 41);
+  add("media_player.lounge_speaker", "idle", { friendly_name: el ? "Ηχείο σαλονιού" : "Lounge Speaker", volume_level: 0.2 }, { area_id: "lounge" }, 41);
+  add("light.bedside", "off", { friendly_name: el ? "Πορτατίφ" : "Bedside" }, { area_id: "sleep" }, 600);
+  add("light.wardrobe", "off", { friendly_name: el ? "Ντουλάπα" : "Wardrobe" }, { area_id: "sleep" }, 600);
+  add("light.table", "off", { friendly_name: el ? "Φως τραπεζιού" : "Table Light" }, { area_id: "dining" }, 600);
+  add("input_select.house_mode", el ? "Νύχτα" : "Night", { friendly_name: el ? "Λειτουργία σπιτιού" : "House mode", options: el ? ["Μέρα", "Ταινία", "Νύχτα"] : ["Day", "Movie", "Night"] }, {});
+
+  const sceneDefs = {
+    s_evening: { name: el ? "Σαλόνι βράδυ" : "Lounge Evening", area: "lounge", labels: ["dashboard"], ran: 41, icon: "mdi:sofa-outline",
+      entities: { "light.sofa_lamp": { state: "on", brightness: 64, color_mode: "color_temp", color_temp_kelvin: 2200 }, "light.ceiling_lounge": { state: "off" }, "cover.lounge_blind": { state: "closed", current_position: 0 } } },
+    s_movie: { name: el ? "Ταινία" : "Movie", area: "lounge", labels: ["dashboard", "movie"], ran: 60 * 26, icon: "mdi:movie-open-outline",
+      entities: { "light.sofa_lamp": { state: "on", brightness: 25 }, "light.ceiling_lounge": { state: "off" }, "cover.lounge_blind": { state: "closed", current_position: 0 }, "media_player.lounge_speaker": { state: "idle", volume_level: 0.35 } } },
+    s_bright: { name: el ? "Σαλόνι φωτεινό" : "Lounge Bright", area: "lounge", labels: ["dashboard"], ran: 60 * 24 * 3,
+      entities: { "light.sofa_lamp": { state: "on", brightness: 255 }, "light.ceiling_lounge": { state: "on", brightness: 255 }, "cover.lounge_blind": { state: "open", current_position: 100 } } },
+    s_bed_night: { name: el ? "Υπνοδωμάτιο νύχτα" : "Bedroom Night", area: "sleep", labels: ["night"], ran: 60 * 24 * 2, icon: "mdi:weather-night",
+      entities: { "light.bedside": { state: "on", brightness: 20 }, "light.wardrobe": { state: "off" } } },
+    s_wake: { name: el ? "Ξύπνημα" : "Wake Up", area: "sleep", labels: [], ran: 60 * 24 * 2 + 600, icon: "mdi:weather-sunset-up",
+      entities: { "light.bedside": { state: "on", brightness: 180 } } },
+    s_dinner: { name: el ? "Δείπνο" : "Dinner", area: "dining", labels: ["dashboard"], ran: null, icon: "mdi:silverware-fork-knife",
+      entities: { "light.table": { state: "on", brightness: 200 } } },
+    s_all_off: { name: el ? "Όλα σβηστά" : "All Lights Off", area: null, labels: ["night"], ran: 60 * 24 * 6, icon: "mdi:lightbulb-group-off-outline",
+      entities: { "light.sofa_lamp": { state: "off" }, "light.ceiling_lounge": { state: "off" }, "light.bedside": { state: "off" }, "light.wardrobe": { state: "off" }, "light.table": { state: "off" } } },
+  };
+  // A YAML scene without an id: no stored targets, "untouched since it ran" decides.
+  add("scene.reading_corner", ago(60 * 5), { friendly_name: el ? "Γωνιά διαβάσματος" : "Reading Corner", entity_id: ["light.sofa_lamp"] }, { area_id: "lounge" });
+  add("scene.broken_scene", "unavailable", { friendly_name: el ? "Παλιά σκηνή" : "Old Scene" }, {});
+  const sceneEntity = (id) => "scene." + id.slice(2);
+  for (const [id, d] of Object.entries(sceneDefs)) {
+    add(sceneEntity(id), d.ran === null ? "unknown" : ago(d.ran), { friendly_name: d.name, id, icon: d.icon, entity_id: Object.keys(d.entities) }, { area_id: d.area, labels: d.labels });
+  }
+  const labels = [
+    { label_id: "dashboard", name: "Dashboard" }, { label_id: "night", name: el ? "Νύχτα" : "Night" }, { label_id: "movie", name: el ? "Ταινία" : "Movie" },
+  ];
+  const areas = {
+    lounge: { area_id: "lounge", name: el ? "Σαλόνι" : "Lounge" },
+    sleep: { area_id: "sleep", name: el ? "Υπνοδωμάτιο" : "Bedroom" },
+    dining: { area_id: "dining", name: el ? "Τραπεζαρία" : "Dining" },
+  };
+
+  const cards = [];
+  const log = (...a) => { document.getElementById("log").textContent += a.map((x) => typeof x === "string" ? x : JSON.stringify(x)).join(" ") + "\n"; };
+  let snapshot = null;
+  const configOf = (id) => ({ id, name: sceneDefs[id].name, icon: sceneDefs[id].icon, entities: sceneDefs[id].entities });
+  const formatState = (s, state) => {
+    const v = state ?? s.state;
+    const dict = el ? { on: "Αναμμένο", off: "Σβηστό", open: "Ανοιχτό", closed: "Κλειστό", idle: "Αδρανές" } : { on: "On", off: "Off", open: "Open", closed: "Closed", idle: "Idle" };
+    return dict[v] ?? v;
+  };
+  function makeHass() {
+    return {
+      states: { ...states },
+      entities,
+      areas,
+      user: { is_admin: !q.has("user") },
+      language: lang,
+      locale: { language: lang, time_format: "24" },
+      themes: { darkMode: q.has("dark") },
+      formatEntityState: formatState,
+      callWS: async (msg) => {
+        log("callWS", msg.type);
+        if (msg.type === "config/label_registry/list") return labels;
+        throw new Error("unknown " + msg.type);
+      },
+      callApi: async (method, path, body) => {
+        log("callApi", method, path);
+        const id = decodeURIComponent(path.split("/").pop());
+        if (!sceneDefs[id]) throw { status_code: 404, message: "Resource not found" };
+        if (method === "POST") { sceneDefs[id].entities = body.entities; refresh(); return { result: "ok" }; }
+        return structuredClone(configOf(id));
+      },
+      callService: async (domain, service, data, target) => {
+        log("callService", domain, service, data, target ?? "");
+        await new Promise((r) => setTimeout(r, service === "create" ? 30 : 600));
+        apply(domain, service, data, target);
+      },
+    };
+  }
+  function setState(id, patch) {
+    const s = states[id] ?? { entity_id: id, attributes: {} };
+    const t = new Date().toISOString();
+    states[id] = { ...s, ...patch, attributes: { ...s.attributes, ...(patch.attributes ?? {}) }, last_changed: t, last_updated: t };
+  }
+  function setTo(targets) {
+    for (const [eid, { state, ...attrs }] of Object.entries(targets)) setState(eid, { state, attributes: state === "off" ? { brightness: undefined } : attrs });
+  }
+  // A small fake of Home Assistant answering the card's actions.
+  function apply(domain, service, data, target) {
+    if (domain === "scene" && service === "create") {
+      snapshot = Object.fromEntries(data.snapshot_entities.map((id) => [id, { state: states[id].state, ...states[id].attributes }]));
+      setState("scene.scene_pulse_undo", { state: "unknown", attributes: { friendly_name: "scene_pulse_undo", entity_id: data.snapshot_entities } });
+    }
+    if (domain === "scene" && service === "turn_on") {
+      const eid = target.entity_id;
+      if (eid === "scene.scene_pulse_undo" && snapshot) setTo(snapshot);
+      const def = sceneDefs["s_" + eid.split(".")[1]];
+      if (def) setTo(def.entities);
+      setState(eid, { state: new Date().toISOString() });
+    }
+    refresh();
+  }
+  function refresh() { const hass = makeHass(); for (const c of cards) c.hass = hass; }
+
+  const scenarios = [
+    { col: 0, cap: "Zero config, by area; house mode “Night” first; All Lights Off asks first", config: { group_by: "area", confirm: ["scene.all_off"] } },
+    { col: 1, cap: "Label “dashboard”, one list; fades in over 2 s", config: { label: "dashboard", title: el ? "Σαλόνι" : "Living", mode_entity: "none", transition: 2 } },
+    { col: 1, cap: "Explicit list, no title, no mode", config: { title: "", mode_entity: "none", entities: ["scene.reading_corner", "scene.wake"] } },
+    { col: 2, cap: "Empty: a label nobody has", config: { label: "nothing", mode_entity: "none" } },
+  ];
+
+  const cols = [...document.querySelectorAll(".col")];
+  const toastEl = document.getElementById("toast");
+  let toastTimer;
+  const hass = makeHass();
+  for (const s of scenarios) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `<p class="cap">${s.cap}</p>`;
+    const card = document.createElement("scene-pulse-card");
+    card.setConfig({ type: "custom:scene-pulse-card", ...s.config });
+    card.hass = hass;
+    card.addEventListener("hass-action", (e) => {
+      log("hass-action", e.detail.config);
+      const t = e.detail.config.tap_action;
+      if (t.action === "perform-action" && confirm(t.confirmation?.text ?? "OK?")) {
+        const [domain, service] = t.perform_action.split(".");
+        makeHass().callService(domain, service, t.data ?? {}, t.target);
+      }
+    });
+    card.addEventListener("hass-notification", (e) => {
+      log("toast", e.detail.message, e.detail.action ? `[${e.detail.action.text}]` : "");
+      toastEl.innerHTML = `<span>${e.detail.message}</span>`;
+      if (e.detail.action) {
+        const b = document.createElement("button");
+        b.textContent = e.detail.action.text;
+        b.onclick = () => { toastEl.style.display = "none"; e.detail.action.action(); };
+        toastEl.appendChild(b);
+      }
+      toastEl.style.display = "flex";
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => (toastEl.style.display = "none"), e.detail.duration ?? 4000);
+    });
+    cards.push(card);
+    wrap.appendChild(card);
+    cols[s.col].appendChild(wrap);
+  }
+  // ?menu opens the first card's menu on Lounge Evening; ?show opens "What it sets" there.
+  if (q.has("menu") || q.has("show")) {
+    setTimeout(async () => {
+      const root = cards[0].shadowRoot;
+      root.querySelector('.row[data-eid="scene.evening"] .more').click();
+      if (q.has("show")) {
+        await new Promise((r) => setTimeout(r, 200));
+        [...root.querySelectorAll(".menu .item")].find((b) => b.querySelector("ha-icon").icon === "mdi:format-list-checks").click();
+      }
+    }, 500);
+  }
+</script>
+</head>
+<body>
+  <div class="grid"><div class="col"></div><div class="col"></div><div class="col"></div></div>
+  <div id="toast"></div>
+  <div id="log"></div>
+</body>
+</html>

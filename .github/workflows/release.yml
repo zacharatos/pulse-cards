@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Tag matches the version in the files
+        run: node scripts/check-version.mjs "${GITHUB_REF_NAME}"
+      - name: Release notes from CHANGELOG.md
+        run: node scripts/changelog-notes.mjs "${GITHUB_REF_NAME#v}" > release-notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/pulse-cards.js
+          body_path: release-notes.md
