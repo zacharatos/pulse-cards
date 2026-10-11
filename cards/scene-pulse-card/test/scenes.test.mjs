@@ -177,3 +177,26 @@ test("watched includes members, stored targets and the mode entity; stub picks r
   assert.deepEqual([...w].sort(), ["cover.blind", "input_select.house_mode", "light.extra", "light.sofa", "scene.living_evening"]);
   assert.deepEqual(stubEntities(hass, 2), ["scene.living_evening", "scene.living_movie"]);
 });
+
+test("Undo remembers the scene's own entities, else its stored config's, else what is in its area", async () => {
+  const { undoTargets } = await import("../src/scenes.ts");
+  const hass = {
+    states: Object.fromEntries(
+      ["scene.hue_bedroom_night", "light.bed", "light.ceiling", "switch.fan", "sensor.temp", "light.hall"].map((id) => [id, { entity_id: id, state: "on", attributes: {} }])
+    ),
+    entities: {
+      "scene.hue_bedroom_night": { entity_id: "scene.hue_bedroom_night", area_id: "bedroom" },
+      "light.bed": { entity_id: "light.bed", area_id: "bedroom" },
+      "light.ceiling": { entity_id: "light.ceiling", device_id: "dev_ceiling" },
+      "switch.fan": { entity_id: "switch.fan", area_id: "bedroom" },
+      "sensor.temp": { entity_id: "sensor.temp", area_id: "bedroom" },
+      "light.hall": { entity_id: "light.hall", area_id: "hall" },
+    },
+    devices: { dev_ceiling: { id: "dev_ceiling", area_id: "bedroom" } },
+    language: "en",
+  };
+  assert.deepEqual(undoTargets(hass, "scene.x", ["light.sofa"]), ["light.sofa"]);
+  assert.deepEqual(undoTargets(hass, "scene.x", [], { entities: { "light.hall": { state: "on" } } }), ["light.hall"]);
+  assert.deepEqual(undoTargets(hass, "scene.hue_bedroom_night", []), ["light.bed", "light.ceiling", "switch.fan"]);
+  assert.deepEqual(undoTargets(hass, "scene.nowhere", []), []);
+});

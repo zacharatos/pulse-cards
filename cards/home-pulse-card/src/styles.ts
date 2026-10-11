@@ -669,6 +669,11 @@ export const cardStyles = css`
   .mode.active ha-icon {
     color: var(--c);
   }
+  /* Icons only (show_mode_names: false): a lower row with a slightly larger icon. */
+  .mode.icon-only {
+    height: 46px;
+    --mdc-icon-size: 22px;
+  }
   .mode-name {
     max-width: 100%;
     font-size: 11px;

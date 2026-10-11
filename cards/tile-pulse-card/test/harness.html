@@ -104,6 +104,7 @@
   // Living room purifier: an on/off switch plus a mode select on the same device (the zero-config case).
   add("switch.living_purifier", "on", { friendly_name: "Living Room Air Purifier", icon: "mdi:air-purifier" }, 0.4, { device_id: "dev_living_purifier" });
   add("select.living_purifier_mode", "Auto", { friendly_name: "Living Room Air Purifier Mode", options: ["Sleep", "Manual", "Auto"] }, 30, { device_id: "dev_living_purifier", entity_category: "config" });
+  add("number.living_purifier_level", "2", { friendly_name: "Living Room Air Purifier Fan Level", min: 1, max: 3, step: 1, mode: "slider" }, 30, { device_id: "dev_living_purifier", entity_category: "config" });
   add("sensor.living_purifier_pm25", "7", { friendly_name: "PM2.5", unit_of_measurement: "µg/m³", device_class: "pm25" }, 2, { device_id: "dev_living_purifier" });
   // Bedroom purifier: buttons set an unrelated-looking select (fan level) with its own names.
   add("switch.bedroom_purifier", "on", { friendly_name: "Bedroom Air Purifier", icon: "mdi:air-purifier" }, 26 * 60);
@@ -168,6 +169,7 @@
         const [, svc] = cfg.perform_action.split(".");
         const d = cfg.data ?? {};
         if (svc === "select_option") setState(id, { state: d.option });
+        else if (svc === "set_value") setState(id, { state: String(d.value) });
         else if (svc === "set_preset_mode") setState(id, { attributes: { preset_mode: d.preset_mode } });
         else if (svc === "set_hvac_mode") setState(id, { state: d.hvac_mode });
         else if (svc === "set_mode") setState(id, { attributes: { mode: d.mode } });
@@ -192,6 +194,11 @@
           { option: "high", name: "High", icon: "mdi:fan-chevron-up" },
         ],
       },
+    },
+    {
+      col: 0,
+      cap: "Two rows of buttons: the mode select, then the fan level (a number from 1 to 3)",
+      config: { entity: "switch.living_purifier", button_rows: [{ action_entity: "number.living_purifier_level" }] },
     },
     { col: 0, cap: "Off, with hide_actions_when_off: just the tile", config: { entity: "switch.office_purifier", action_entity: "select.office_purifier_mode", hide_actions_when_off: true } },
     {

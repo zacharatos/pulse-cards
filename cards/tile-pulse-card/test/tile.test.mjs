@@ -265,3 +265,52 @@ test("balanceRows, cssColor, stateColor", () => {
   assert.equal(stateColor(st("fan.f", "on"), "teal"), "var(--teal-color, teal)");
   assert.match(stateColor(st("fan.f", "on")), /^var\(--state-fan-on-color, var\(--state-fan-active-color/);
 });
+
+// ---- numbers and further rows ----
+
+test("a number with a handful of steps offers each step; a wide range offers none", async () => {
+  const { numberSteps } = await import("../src/tile.ts");
+  assert.deepEqual(numberSteps(st("number.level", "2", { min: 1, max: 3, step: 1 })), ["1", "2", "3"]);
+  assert.deepEqual(numberSteps(st("input_number.x", "0", { min: 0, max: 1, step: 0.5 })), ["0", "0.5", "1"]);
+  assert.equal(numberSteps(st("number.big", "20", { min: 0, max: 100, step: 1 })), undefined);
+  assert.deepEqual(optionsOf(st("number.level", "2", { min: 1, max: 3, step: 1 })), ["1", "2", "3"]);
+});
+
+test("a number option is lit by value and set with number.set_value", () => {
+  const s = st("number.level", "2.0", { min: 1, max: 3, step: 1 });
+  assert.equal(optionActive(s, "2"), true);
+  assert.equal(optionActive(s, "3"), false);
+  assert.deepEqual(optionAction("number.level", s, "3"), {
+    action: "perform-action",
+    perform_action: "number.set_value",
+    target: { entity_id: "number.level" },
+    data: { value: 3 },
+  });
+});
+
+test("button_rows add rows from their own entity, after the first, with their own columns", async () => {
+  const { resolveRows } = await import("../src/tile.ts");
+  const hass = hassOf([
+    st("switch.purifier", "on"),
+    st("select.purifier_mode", "Auto", { options: ["Auto", "Sleep", "Manual"] }),
+    st("number.purifier_level", "1", { min: 1, max: 3, step: 1 }),
+  ]);
+  const config = {
+    entity: "switch.purifier",
+    action_entity: "select.purifier_mode",
+    button_rows: [{ action_entity: "number.purifier_level", columns: 3 }, { actions: [{ option: "Sleep", name: "Night" }] }, {}],
+  };
+  const rows = resolveRows(hass, config, "select.purifier_mode");
+  assert.equal(rows.length, 3); // the empty row is left out
+  assert.deepEqual(rows[0].actions.map((a) => [a.option, a.active]), [["Auto", true], ["Sleep", false], ["Manual", false]]);
+  assert.equal(rows[0].columns, 4);
+  assert.deepEqual(rows[1].actions.map((a) => [a.option, a.active, a.entity]), [["1", true, "number.purifier_level"], ["2", false, "number.purifier_level"], ["3", false, "number.purifier_level"]]);
+  assert.equal(rows[1].columns, 3);
+  // A row without its own entity sets options on the first row's entity.
+  assert.equal(rows[2].actions[0].entity, "select.purifier_mode");
+  assert.equal(rows[2].actions[0].name, "Night");
+  // Keys stay unique across rows, so a pending tap breathes on one button only.
+  const keys = rows.flatMap((r) => r.actions.map((a) => a.key));
+  assert.equal(new Set(keys).size, keys.length);
+  assert.ok(watchedEntities(config, "select.purifier_mode").has("number.purifier_level"));
+});

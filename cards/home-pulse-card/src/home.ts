@@ -9,6 +9,7 @@ import type {
   SectionId,
   ShortcutConfig,
 } from "./types";
+import { NO_LABEL_FILTER, passesLabelFilter, type ResolvedLabelFilter } from "./labels";
 
 /** All blocks, in their natural order. */
 export const SECTION_IDS: SectionId[] = ["greeting", "status", "alerts", "nudges", "modes", "alarm", "pulse", "shortcuts"];
@@ -127,14 +128,24 @@ export type HomeIndex = Record<PulseId, string[]>;
 
 /**
  * Which entities feed each pulse group. Built from the registry once (cached by the card against
- * `hass.entities` and the config) so a busy home is scanned only when the registry changes.
+ * `hass.entities` and the config) so a busy home is scanned only when the registry changes. The label
+ * filter applies to everything that feeds a group: the pulse, the alerts, the nudges and the badges.
  */
-export function indexHome(hass: HomeAssistant, config: HomePulseCardConfig): HomeIndex {
+export function indexHome(
+  hass: HomeAssistant,
+  config: HomePulseCardConfig,
+  labelFilter: ResolvedLabelFilter = NO_LABEL_FILTER
+): HomeIndex {
   const out = Object.fromEntries(PULSE_IDS.map((id) => [id, [] as string[]])) as HomeIndex;
   const exclude = new Set(config.exclude_entities ?? []);
   const alertClasses = new Set(config.alert_classes ?? DEFAULT_ALERT_CLASSES);
   for (const id of Object.keys(hass.states)) {
     if (exclude.has(id)) continue;
+    if (labelFilter.active) {
+      const entry = hass.entities?.[id];
+      const device = entry?.device_id ? hass.devices?.[entry.device_id] : undefined;
+      if (!passesLabelFilter(entry?.labels, device?.labels, labelFilter)) continue;
+    }
     const s = hass.states[id];
     const domain = domainOf(id);
     const cls = dc(s);

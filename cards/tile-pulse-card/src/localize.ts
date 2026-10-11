@@ -40,6 +40,11 @@ const en: Dict = {
   ed_auto_none: "Add buttons that set an option, run a scene or script, toggle an entity or do any action.",
   ed_customize: "Customise these buttons",
   ed_actions_hint: "A button with an option sets it on its entity (or on “Options from”). Without an option it toggles or runs its entity.",
+  ed_section_rows: "More rows of buttons",
+  ed_rows_hint: "Each row takes its buttons from its own entity: the mode on top, the fan level under it.",
+  ed_row_n: "Row {n}",
+  ed_add_row: "Add a row",
+  ed_row_none: "Pick “Options from” for one button per option, or add buttons of your own.",
 };
 
 const el: Dict = {
@@ -79,6 +84,11 @@ const el: Dict = {
   ed_auto_none: "Πρόσθεσε κουμπιά που αλλάζουν μια επιλογή, τρέχουν σκηνή ή script, ανάβουν/σβήνουν μια οντότητα ή κάνουν οποιαδήποτε ενέργεια.",
   ed_customize: "Προσάρμοσε αυτά τα κουμπιά",
   ed_actions_hint: "Ένα κουμπί με επιλογή την ορίζει στην οντότητά του (ή στο «Επιλογές από»). Χωρίς επιλογή ανάβει/σβήνει ή τρέχει την οντότητά του.",
+  ed_section_rows: "Περισσότερες σειρές κουμπιών",
+  ed_rows_hint: "Κάθε σειρά παίρνει τα κουμπιά της από τη δική της οντότητα: η λειτουργία πάνω, η ταχύτητα ανεμιστήρα από κάτω.",
+  ed_row_n: "Σειρά {n}",
+  ed_add_row: "Προσθήκη σειράς",
+  ed_row_none: "Διάλεξε «Επιλογές από» για ένα κουμπί ανά επιλογή, ή πρόσθεσε δικά σου κουμπιά.",
 };
 
 const LANGS: Record<string, Dict> = { en, el };

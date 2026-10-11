@@ -33,6 +33,12 @@ export interface DeviceRegistryEntry {
   area_id?: string | null;
   name?: string | null;
   name_by_user?: string | null;
+  labels?: string[];
+}
+
+export interface LabelRegistryEntry {
+  label_id: string;
+  name: string;
 }
 
 export interface AreaRegistryEntry {
@@ -51,6 +57,8 @@ export interface HomeAssistant {
   locale?: { language: string; time_zone?: string; time_format?: string };
   config?: { time_zone?: string };
   themes?: { darkMode?: boolean };
+  /** One-off websocket calls (the label registry). */
+  callWS?: <T>(msg: Record<string, unknown>) => Promise<T>;
   callService: (
     domain: string,
     service: string,
@@ -122,12 +130,27 @@ export interface ModeConfig {
   icon?: string;
   /** Colour of the button while this mode is active. Default: the theme's primary colour. */
   color?: string;
-  /** Option of `mode_entity` this button selects. Defaults to `name` when `mode_entity` is set. */
+  /**
+   * Option of `mode_entity` this button selects. Defaults to `name` when `mode_entity` is set, so a mode
+   * without a name needs it.
+   */
   option?: string;
   /** A scene, script, input_boolean or switch this button runs or toggles (instead of an option). */
   entity?: string;
   tap_action?: ActionConfig;
   hold_action?: ActionConfig;
+}
+
+/** Label filter, the same shape as Area Pulse Card's `label_filter`. */
+export interface LabelFilterConfig {
+  /** Entities must carry at least one of these labels (or all of them with `match: all`). Label ID or name. */
+  include?: string | string[];
+  /** Entities carrying any of these labels are left out. Always wins over `include`. */
+  exclude?: string | string[];
+  /** `any` (default): one included label is enough. `all`: every included label is required. */
+  match?: "any" | "all";
+  /** Also read labels from the entity's device (default true). */
+  from_device?: boolean;
 }
 
 export type TodayEntity = string | { entity: string; name?: string };
@@ -155,7 +178,10 @@ export interface ShortcutConfig {
   navigation_path?: string;
   /** Entity whose on/off state tints the tile. */
   entity?: string;
-  /** Live badge: a pulse group id (`lights` → number of lights on) or an entity id (shows its state). */
+  /**
+   * Live badge: a pulse group id (`lights` → number of lights on) or an entity id (shows its state, e.g. a
+   * "expiring soon" count). Zero, `off`, unknown and unavailable show nothing.
+   */
   badge?: PulseId | string;
   tap_action?: ActionConfig;
   hold_action?: ActionConfig;
@@ -186,6 +212,13 @@ export interface HomePulseCardConfig {
   /** House modes. With an input_select/select, one button per option unless `modes` lists them. */
   mode_entity?: string;
   modes?: ModeConfig[];
+  /** Show the names on the mode buttons (default true). `false` draws icons only; the name stays the tooltip. */
+  show_mode_names?: boolean;
+  /**
+   * The option of `mode_entity` that means "back to normal". It gets no button of its own: tapping the lit
+   * mode again selects it, and while it is the current option no mode is lit.
+   */
+  mode_default?: string;
 
   /** People shown as chips. Default: every `person` entity. */
   persons?: string[];
@@ -208,6 +241,8 @@ export interface HomePulseCardConfig {
   alert_classes?: string[];
   battery_threshold?: number;
   exclude_entities?: string[];
+  /** Only count entities that carry (or lack) certain labels in the pulse, alerts, nudges and badges. Same as Area Pulse Card. */
+  label_filter?: LabelFilterConfig;
   /** "Everyone left and 3 lights are on" style hints with a one-tap fix (default true). */
   nudges?: boolean;
 

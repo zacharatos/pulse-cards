@@ -20,12 +20,12 @@ A soft glow in the top-left corner follows the sun: warm orange by day, cool blu
 - **Shortcuts** (Home Pulse Shortcuts). Large tiles with an icon and a name that take you to your other views (`navigation_path: lights` stays on the current dashboard) or run any action, with tap, hold and double-tap. Rows balance themselves (7 tiles on 4 columns → 4 + 3, 5 → 3 + 2). Optional small badges: a count (`badge: lights` → how many lights are on) or any entity's state (`badge: sensor.open_tasks`).
 - **Header with a sky.** "Good evening, Timos" with today's date, and the weather on the right: icon, temperature, condition and today's high and low from the weather's own forecast (daily, twice-daily or hourly, whichever it has; nothing extra to set up). The corner glow is orange while the sun is up and blue after sunset (from `sun.sun`, or the clock without it). Your own text with `{name}` if you prefer, or centred.
 - **Today line.** One quiet line under the date answers "anything to remember?": "Dentist 17:30 · Recycling tomorrow". It reads the next event of your calendars (all of them, or the ones you pick) plus any waste-collection, date, timestamp or text sensors you add, shows today and tomorrow, and disappears when there's nothing. Times follow your HA 12/24-hour setting.
-- **House modes.** A row of buttons for the whole house: Home, Away, Night, Movie, Guest… with the current one raised and its icon in its colour. Point it at an `input_select` (an `input_select.house_mode` is found by itself) and you get one button per option, with icons guessed from the names in English or Greek. Or list modes that run a scene (the last one run is lit), a script, an `input_boolean` or any action.
+- **House modes.** A row of buttons for the whole house: Home, Away, Night, Movie, Guest… with the current one raised and its icon in its colour. Point it at an `input_select` (an `input_select.house_mode` is found by itself) and you get one button per option, with icons guessed from the names in English or Greek. Or list modes that run a scene (the last one run is lit), a script, an `input_boolean` or any action. Icons only, if you like (`show_mode_names: false`). Name a "back to normal" option (`mode_default`) and the lit mode becomes a toggle: tap it again and the selector goes back to that option, with no mode lit. What "normal" means in the house is up to your automations; the card only selects the option.
 - **One status line.** The alarm as a small chip with its state colour and icon (tap for Home Assistant's own alarm dialog with its arm buttons and keypad), then the people in your home: picture or initial, green with a dot when home, dimmed with "Away" or their zone when out.
 - **Silent until it matters.** Leak, smoke, gas, CO and other safety sensors stay invisible; one that trips becomes a red line you can tap.
 - **"Nobody's home" hint.** When everyone tracked is away and a door or window is open, a lock is unlocked, lights are on, music is playing or the alarm is off, one quiet banner says so with a button per fix: *Show windows* (there's nothing to do from afar, so it lists which ones), *Lock*, *Lights off*, *Pause media*, *Arm away*. The fixes touch only what is on or open.
 - **Zero config.** People, weather, the alarm panel, the sun and the safety sensors are discovered: `type: custom:home-pulse-card` alone is useful. Shortcuts are the only thing to set up, in the visual editor or YAML.
-- **More, if you want it.** Two opt-in blocks for people who like more on the card: the alarm as a panel with arm and disarm buttons, and a home "pulse" (lights on, windows open, what's playing, low batteries…) with a popup of exactly which ones. They're off by default because Area Pulse cards already show this per room.
+- **More, if you want it.** Two opt-in blocks for people who like more on the card: the alarm as a panel with arm and disarm buttons, and a home "pulse" (lights on, windows open, what's playing, low batteries…) with a popup of exactly which ones. They're off by default because Area Pulse cards already show this per room. A **label filter** (the same `label_filter` as Area Pulse Card) keeps entities you don't care about, like a humidifier's child lock, out of the pulse, the alerts, the hints and the badges.
 - **Layouts.** `card` or `flat` (no background), `default` or `compact`, and you choose which blocks show and in what order. Home Pulse Shortcuts is `flat` by default (separate tiles, like native tile cards) or `card` (all tiles in one card).
 - **Sections-ready and fast**, with a **visual editor** on HA's own form controls and a reorderable shortcut list, in **English and Greek**.
 
@@ -84,6 +84,10 @@ modes:                                 # …or name, reorder and colour them (op
   - name: Movie
     entity: scene.movie_night          # a scene instead of an option
     color: purple
+  - option: Guest                      # no name: needs the option; with show_mode_names: false all are icons
+    icon: mdi:account-group-outline
+mode_default: Normal                   # an option with no button: tapping the lit mode again selects it
+show_mode_names: true
 show_date: true
 center_greeting: false
 
@@ -104,6 +108,8 @@ show_inactive: false
 nudges: true
 battery_threshold: 20
 exclude_entities: [light.christmas_tree]
+label_filter:
+  exclude: [Not on dashboard]   # label name or ID; also include, match, from_device
 ```
 
 ### Home Pulse Shortcuts
@@ -159,7 +165,9 @@ shortcuts:
 | `show_date` | `true` | Today's date under the greeting. |
 | `today` | every calendar | The Today line under the date (part of `greeting`). `false` hides it. Keys: `calendars`, `entities` (ids, or `{entity, name}`), `tomorrow` (default `true`), `tap_action` (default: more-info of the first item). |
 | `mode_entity` | an `input_select`/`select` named `house_mode` or `home_mode` | The mode selector. `none` turns discovery off. |
-| `modes` | one per option | Mode buttons: `name`, `icon` (guessed from the name), `color` (when active), `option` (defaults to `name`), `entity` (scene, script, input_boolean, switch), `tap_action`, `hold_action`. |
+| `modes` | one per option | Mode buttons: `name`, `icon` (guessed from the name), `color` (when active), `option` (defaults to `name`, so a mode without a name needs it), `entity` (scene, script, input_boolean, switch), `tap_action`, `hold_action`. |
+| `show_mode_names` | `true` | `false` draws the mode buttons as icons only; the name stays the tooltip and what screen readers say. |
+| `mode_default` | – | An option of `mode_entity` that means "back to normal". It gets no button of its own; tapping the lit mode again selects it, and while it is current no mode is lit. Ignored when the selector doesn't offer it. |
 | `center_greeting` | `false` | Centre the greeting, with the weather underneath. |
 | `persons` | every `person` | People shown as chips, in this order. |
 | `show_away` | `true` | Also show people who aren't home. |
@@ -172,6 +180,7 @@ shortcuts:
 | `alert_classes` | moisture, smoke, gas, carbon_monoxide, safety, problem, tamper | Binary sensor device classes that raise the red alert line. |
 | `battery_threshold` | `20` | A battery at or below this % counts as low. |
 | `exclude_entities` | – | Entities the pulse ignores. |
+| `label_filter` | – | Count only entities that carry (or lack) Home Assistant labels, in the pulse, the alerts, the "Nobody's home" hints and the shortcut badges. Same keys as Area Pulse Card: `include`, `exclude` (always wins), `match` (`any`/`all`), `from_device` (default `true`, so a label on a device covers its entities). Label names or IDs. |
 | `nudges` | `true` | `false` turns the "Nobody's home" hints off (same as leaving `nudges` out of `sections`). Needs at least one tracked person. |
 | `shortcuts`, `columns`, `show_names` | – | Still supported on Home Pulse Card (the `shortcuts` block), so existing dashboards keep working. New dashboards use Home Pulse Shortcuts. |
 
@@ -183,7 +192,7 @@ shortcuts:
 | `appearance` | `flat` | `flat`: separate tiles drawn like native tile cards (your theme's card fill, edge, shadow and blur). `card`: all tiles in one card. |
 | `columns` | `4` | Maximum tiles per row (1–8). Rows are balanced. |
 | `show_names` | `true` | Names under the icons; `false` for icon-only tiles. |
-| `battery_threshold`, `exclude_entities`, `alert_classes` | as above | Only affect what badges count. |
+| `battery_threshold`, `exclude_entities`, `alert_classes`, `label_filter` | as above | Only affect what badges count. |
 | `shortcuts` | – | The tiles, see below. |
 
 ### Shortcuts
@@ -193,8 +202,8 @@ shortcuts:
 | `name` | Label (shown with `show_names`, and always used for accessibility). |
 | `icon` | Any `mdi:` icon. Defaults to the entity's icon when `entity` is set. |
 | `color` | Icon colour: a Home Assistant colour name (`amber`, `blue`, `deep-orange`…) or any CSS colour. Default: your theme's primary colour (we recommend leaving it). Badges stay neutral, except a count that means something: lights on in gold, open doors and windows in orange, unlocked locks, alerts and low batteries in red. |
-| `navigation_path` | Shorthand for a navigate action. `lights` goes to the `lights` view of the current dashboard; `/lovelace/lights` or `/energy` are used as they are. |
-| `badge` | A pulse group (`lights`, `windows`, `locks`, `batteries`… shows how many are active, nothing at zero) or an entity id (shows its state; hidden when `0`, `off` or unavailable). |
+| `navigation_path` | Shorthand for a navigate action. `lights` goes to the `lights` view of the current dashboard; `/lovelace/lights` or `/energy` are used as they are. The visual editor offers your dashboards and views in a list, and still takes a typed path. |
+| `badge` | A pulse group (`lights`, `windows`, `locks`, `batteries`… shows how many are active, nothing at zero) or any entity id (shows its state, hidden when `0`, `off` or unavailable): an "expiring soon" count from Stock Pulse, open tasks, a temperature. In the visual editor: a group from the list, or any entity from the picker under it. |
 | `entity` | Tints the tile while this entity is on/open/playing. Without a `navigation_path` or `tap_action`, tapping opens its dialog. |
 | `tap_action`, `hold_action`, `double_tap_action` | Any Home Assistant action. `tap_action` wins over `navigation_path`. |
 

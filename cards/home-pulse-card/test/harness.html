@@ -193,6 +193,13 @@
     { col: 0, cap: "Home Pulse Shortcuts with nothing configured", tag: SC, variant: "home", config: {} },
     { col: 1, cap: "Overview with shortcuts in its own config (still supported)", variant: "home", config: { shortcuts } },
     { col: 1, cap: "Night: moon glow, Night mode lit", variant: "home", night: true, config: { shortcuts: shortcuts.slice(0, 5) } },
+    {
+      col: 1,
+      cap: "Mode icons only; Home is mode_default (no button of its own, a second tap on Night goes back to it)",
+      variant: "home",
+      night: true,
+      config: { sections: ["greeting", "modes"], show_date: false, show_mode_names: false, mode_default: "Home" },
+    },
     { col: 2, cap: "Everyone away: window open, door unlocked, lights on → one hint with its fixes", variant: "away", config: {} },
     {
       col: 2,

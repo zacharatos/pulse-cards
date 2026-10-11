@@ -1,6 +1,6 @@
 {
   "name": "pulse-cards",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Every Pulse Lovelace card for Home Assistant in one HACS bundle: Area Pulse, Home Pulse, Home Pulse Shortcuts, Tile Pulse, Scene Pulse and the cards still to come.",
   "main": "dist/pulse-cards.js",

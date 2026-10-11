@@ -6,6 +6,8 @@ export interface ResolvedMode {
   icon: string;
   color?: string;
   active: boolean;
+  /** Tapping this (lit) mode selects `mode_default`: the option it goes back to. */
+  resetTo?: string;
   entity?: string;
   tap_action: ActionConfig;
   hold_action?: ActionConfig;
@@ -61,14 +63,34 @@ function sceneTime(s?: HassEntity): number {
   return Number.isNaN(t) ? -Infinity : t;
 }
 
+const selectAction = (entity: string, option: string): ActionConfig => ({
+  action: "perform-action",
+  perform_action: `${domainOf(entity)}.select_option`,
+  target: { entity_id: entity },
+  data: { option },
+});
+
+/**
+ * The "back to normal" option, when it is set and the mode selector really offers it. Without a selector (modes
+ * that are scenes or scripts) there is nothing to go back to.
+ */
+export function defaultMode(hass: HomeAssistant, config: HomePulseCardConfig, modeEntity: string | undefined): string | undefined {
+  const option = config.mode_default?.trim();
+  if (!option || !modeEntity) return undefined;
+  const options = hass.states[modeEntity]?.attributes.options as string[] | undefined;
+  return !Array.isArray(options) || options.includes(option) ? option : undefined;
+}
+
 export function resolveModes(hass: HomeAssistant, config: HomePulseCardConfig): ResolvedMode[] {
   const me = discoverModeEntity(hass, config);
   const meState = me ? hass.states[me] : undefined;
+  const reset = defaultMode(hass, config, me);
   // A mode just added in the editor is still empty: it draws nothing until it says what it does.
   const listed = (config.modes ?? []).filter((m) => m && (m.name || m.option || m.entity || m.tap_action));
+  // The default option is "no mode": it gets no button of its own unless the list names it.
   const items: ModeConfig[] = listed.length
     ? listed
-    : ((meState?.attributes.options as string[] | undefined) ?? []).map((option) => ({ option }));
+    : ((meState?.attributes.options as string[] | undefined) ?? []).filter((o) => o !== reset).map((option) => ({ option }));
   // Among scene buttons, the most recently activated scene is "the current mode".
   const sceneIds = items.map((m) => m.entity).filter((e): e is string => !!e && domainOf(e) === "scene");
   const latestScene = sceneIds.reduce<string | undefined>(
@@ -81,23 +103,29 @@ export function resolveModes(hass: HomeAssistant, config: HomePulseCardConfig): 
     const entityState = m.entity ? hass.states[m.entity] : undefined;
     const name = m.name ?? option ?? String(entityState?.attributes.friendly_name ?? m.entity ?? "");
     const icon = m.icon ?? (entityState?.attributes.icon as string | undefined) ?? guessModeIcon(name);
-    let tap: ActionConfig = { action: "none" };
     let active = false;
-    if (m.tap_action) tap = m.tap_action;
-    else if (option !== undefined && me) {
-      tap = {
-        action: "perform-action",
-        perform_action: `${domainOf(me)}.select_option`,
-        target: { entity_id: me },
-        data: { option },
-      };
-    } else if (m.entity) tap = entityAction(m.entity);
-
     if (option !== undefined && meState) active = meState.state === option;
     else if (m.entity && domainOf(m.entity) === "scene") active = m.entity === latestScene && sceneTime(entityState) > -Infinity;
     else if (entityState) active = entityState.state === "on";
 
-    return { name, icon, color: m.color, active, entity: m.entity ?? me, tap_action: tap, hold_action: m.hold_action };
+    // The lit mode, tapped again, goes back to the default option (a toggle, the way people expect it).
+    const resetTo = reset !== undefined && me && option !== undefined && option !== reset && active ? reset : undefined;
+    let tap: ActionConfig = { action: "none" };
+    if (m.tap_action) tap = m.tap_action;
+    else if (resetTo !== undefined) tap = selectAction(me!, resetTo);
+    else if (option !== undefined && me) tap = selectAction(me, option);
+    else if (m.entity) tap = entityAction(m.entity);
+
+    return {
+      name,
+      icon,
+      color: m.color,
+      active,
+      ...(resetTo !== undefined && !m.tap_action ? { resetTo } : {}),
+      entity: m.entity ?? me,
+      tap_action: tap,
+      hold_action: m.hold_action,
+    };
   });
 }
 

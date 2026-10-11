@@ -10,6 +10,7 @@ import type {
   HassEntity,
   HomeAssistant,
   HomePulseCardConfig,
+  LabelRegistryEntry,
   PulseId,
   SectionId,
   ShortcutConfig,
@@ -48,6 +49,7 @@ import {
 } from "./home";
 import { forecastType, todayRange, type ForecastItem } from "./weather";
 import { discoverModeEntity, modeEntities, resolveModes, type ResolvedMode } from "./modes";
+import { hasLabelFilter, loadLabelRegistry, resolveLabelFilter, type ResolvedLabelFilter } from "./labels";
 import { formatTodayItem, todayCalendars, todayEntities, todayItems } from "./today";
 import { actionHandler, type ActionKind } from "./action-handler";
 import { localize, relativeTime } from "./localize";
@@ -165,6 +167,9 @@ export class HomePulseCard extends LitElement {
 
   private _index?: HomeIndex;
   private _indexDeps: unknown[] = [];
+  /** Label names in `label_filter` become IDs once the label registry is in. */
+  private _labelRegistry?: LabelRegistryEntry[];
+  private _labelsRequested = false;
   private _persons: string[] = [];
   private _weather?: string;
   private _alarm?: string;
@@ -195,6 +200,9 @@ export class HomePulseCard extends LitElement {
     }
     for (const c of config.chips ?? []) {
       if (!c || typeof c !== "object" || !c.entity) throw new Error("Every item in `chips` needs an `entity`");
+    }
+    if (config.label_filter !== undefined && (typeof config.label_filter !== "object" || Array.isArray(config.label_filter))) {
+      throw new Error("`label_filter` must be a map with `include` and/or `exclude`");
     }
     const unknown = (config.sections ?? []).filter((s) => !SECTION_IDS.includes(s));
     if (unknown.length) throw new Error(`Unknown section(s): ${unknown.join(", ")}. Use ${SECTION_IDS.join(", ")}.`);
@@ -290,12 +298,13 @@ export class HomePulseCard extends LitElement {
     if (!hass || !config) return;
     // The registry is what decides membership; states only change values. A brand-new entity
     // usually arrives with a registry update, so this stays cheap in big homes.
-    const deps = [hass.entities, hass.devices, config];
+    this._ensureLabelRegistry();
+    const deps = [hass.entities, hass.devices, config, this._labelRegistry];
     if (!this._index || deps.some((d, i) => d !== this._indexDeps[i])) {
       // Discover (and watch) only what a shown block uses, so the shortcuts card stays as light as it looks.
       const sections = config.sections ?? DEFAULT_SECTIONS;
       const uses = (...ids: SectionId[]) => ids.some((id) => sections.includes(id));
-      this._index = indexHome(hass, config);
+      this._index = indexHome(hass, config, this._labelFilter());
       this._persons = uses("status", "nudges") ? discoverPersons(hass, config) : [];
       this._weather = uses("greeting", "status") ? discoverOne(hass, "weather", config.weather_entity) : undefined;
       this._alarm = uses("status", "alarm", "nudges") ? discoverOne(hass, "alarm_control_panel", config.alarm_entity) : undefined;
@@ -311,6 +320,20 @@ export class HomePulseCard extends LitElement {
       ]);
       this._indexDeps = deps;
     }
+  }
+
+  private _labelFilter(): ResolvedLabelFilter {
+    return resolveLabelFilter(this._config?.label_filter, this._labelRegistry);
+  }
+
+  /** Label names in the config need the registry to become IDs. IDs work without it. */
+  private _ensureLabelRegistry() {
+    if (this._labelsRequested || !this.hass || !hasLabelFilter(this._config?.label_filter)) return;
+    this._labelsRequested = true;
+    loadLabelRegistry(this.hass)
+      .then((registry) => (this._labelRegistry = registry))
+      .catch(() => undefined) // keep going with IDs only
+      .finally(() => this.requestUpdate());
   }
 
   /** The sun/moon corner glow belongs to the overview's sky; the shortcuts card has none. */
@@ -344,7 +367,7 @@ export class HomePulseCard extends LitElement {
     const hass = this.hass;
     const config = this._config;
     if (!hass || !config) return nothing;
-    const index = this._index ?? indexHome(hass, config);
+    const index = this._index ?? indexHome(hass, config, this._labelFilter());
     const sections = (config.sections ?? DEFAULT_SECTIONS).filter((s) => SECTION_IDS.includes(s));
     // Weather sits beside the greeting; without a greeting it joins the status row.
     const weatherInGreeting = sections.includes("greeting");
@@ -449,18 +472,21 @@ export class HomePulseCard extends LitElement {
   }
 
   private _renderMode(m: ResolvedMode) {
+    const named = this._config!.show_mode_names !== false && !!m.name;
+    const title = m.resetTo !== undefined ? `${m.name} · ${this._t("mode_back_to", { mode: m.resetTo })}` : m.name;
     return html`
       <button
-        class=${classMap({ mode: true, active: m.active })}
+        class=${classMap({ mode: true, active: m.active, "icon-only": !named })}
         style=${styleMap({ "--c": m.color ? cssColor(m.color) : "var(--hpc-accent)" })}
         aria-pressed=${String(m.active)}
-        title=${m.name}
+        aria-label=${title}
+        title=${title}
         ${actionHandler({ hasHold: !!m.hold_action })}
         @hpc-action=${(ev: CustomEvent<{ action: ActionKind }>) =>
           this._fireAction({ entity: m.entity, tap_action: m.tap_action, hold_action: m.hold_action }, ev.detail.action)}
       >
         <ha-icon .icon=${m.icon}></ha-icon>
-        <span class="mode-name">${m.name}</span>
+        ${named ? html`<span class="mode-name">${m.name}</span>` : nothing}
       </button>
     `;
   }
@@ -846,7 +872,7 @@ export class HomePulseCard extends LitElement {
   private async _openPopup(id: PulseId) {
     const hass = this.hass!;
     // Any group can open, whether or not it is listed in `pulse` (the alerts line, for one).
-    const g = pulseGroups(hass, { ...this._config!, pulse: [id] }, this._index ?? indexHome(hass, this._config!))[0];
+    const g = pulseGroups(hass, { ...this._config!, pulse: [id] }, this._index ?? indexHome(hass, this._config!, this._labelFilter()))[0];
     if (!g) return;
     // What needs attention, in a fixed order taken once, so nothing jumps while the popup is open.
     this._popupEntities = g.active.length ? [...g.active] : [...g.entities];

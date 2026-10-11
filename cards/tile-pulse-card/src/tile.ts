@@ -1,5 +1,13 @@
 // Pure logic for Tile Pulse Card: no DOM, hass + config in, plain data out. Tested in test/tile.test.mjs.
-import type { ActionConfig, HassEntity, HomeAssistant, StateContent, TileActionConfig, TilePulseCardConfig } from "./types";
+import type {
+  ActionConfig,
+  HassEntity,
+  HomeAssistant,
+  StateContent,
+  TileActionConfig,
+  TileButtonRowConfig,
+  TilePulseCardConfig,
+} from "./types";
 
 export const domainOf = (entityId: string) => entityId.split(".")[0];
 
@@ -52,7 +60,33 @@ interface OptionKind {
   attribute?: string;
   service: string;
   field: string;
+  /** Is the entity on this option? Default: the current value equals it. */
+  same?: (current: string | null | undefined, option: string) => boolean;
+  /** The option as the service wants it. Default: as it is. */
+  value?: (option: string) => unknown;
 }
+
+/**
+ * The values of a number / input_number as buttons: every step from min to max, when that is a handful
+ * (a fan level 1–3, a purifier's favourite level 1–5). A wider range is a slider, not a row.
+ */
+export function numberSteps(s: HassEntity): string[] | undefined {
+  const { min, max, step } = s.attributes;
+  if (typeof min !== "number" || typeof max !== "number" || max <= min) return undefined;
+  const st = typeof step === "number" && step > 0 ? step : 1;
+  const n = Math.round((max - min) / st) + 1;
+  if (n < 2 || n > MAX_AUTO_ACTIONS) return undefined;
+  return Array.from({ length: n }, (_, i) => String(Number((min + i * st).toFixed(6))));
+}
+
+const numberKind = (domain: string): OptionKind => ({
+  list: numberSteps,
+  current: (s) => s.state,
+  service: `${domain}.set_value`,
+  field: "value",
+  same: (current, option) => current != null && current !== "" && Number(current) === Number(option),
+  value: (option) => (Number.isNaN(Number(option)) ? option : Number(option)),
+});
 
 const OPTION_KINDS: Record<string, OptionKind> = {
   select: { list: (s) => s.attributes.options, current: (s) => s.state, service: "select.select_option", field: "option" },
@@ -62,6 +96,8 @@ const OPTION_KINDS: Record<string, OptionKind> = {
   humidifier: { list: (s) => s.attributes.available_modes, current: (s) => s.attributes.mode, attribute: "mode", service: "humidifier.set_mode", field: "mode" },
   water_heater: { list: (s) => s.attributes.operation_list, current: (s) => s.state, service: "water_heater.set_operation_mode", field: "operation_mode" },
   media_player: { list: (s) => s.attributes.source_list, current: (s) => s.attributes.source, attribute: "source", service: "media_player.select_source", field: "source" },
+  number: numberKind("number"),
+  input_number: numberKind("input_number"),
 };
 
 const CLIMATE_PRESET: OptionKind = {
@@ -96,7 +132,8 @@ export const takesOptions = (entityId: string) => domainOf(entityId) in OPTION_K
 export function optionActive(s: HassEntity | undefined, option: string): boolean {
   if (!s || isUnavailable(s)) return false;
   const kind = kindFor(s, option);
-  return !!kind && kind.current(s) === option;
+  if (!kind) return false;
+  return kind.same ? kind.same(kind.current(s), option) : kind.current(s) === option;
 }
 
 /** The action that sets the option, handed to HA's own action handler. */
@@ -106,7 +143,7 @@ export function optionAction(entityId: string, s: HassEntity | undefined, option
     action: "perform-action",
     perform_action: kind.service,
     target: { entity_id: entityId },
-    data: { [kind.field]: option },
+    data: { [kind.field]: kind.value ? kind.value(option) : option },
   };
 }
 
@@ -251,17 +288,52 @@ export function resolveActions(
   config: TilePulseCardConfig,
   actionEntity: string | undefined
 ): ResolvedAction[] {
-  if (Array.isArray(config.actions)) {
-    return config.actions.map((a, i) => resolveOne(hass, a, actionEntity ?? config.entity, i));
-  }
-  if (!actionEntity) return [];
-  const s = hass.states[actionEntity];
-  const options = optionsOf(s);
-  if (!usable(options.length)) return [];
-  return options.map((option, i) => resolveOne(hass, { option }, actionEntity, i));
+  return resolveRow(hass, config.actions, actionEntity, actionEntity ?? config.entity, "");
 }
 
-function resolveOne(hass: HomeAssistant, a: TileActionConfig, defaultTarget: string, i: number): ResolvedAction {
+/** One row's buttons: its explicit `actions`, else one per option of its entity. Keys carry the row's prefix. */
+function resolveRow(
+  hass: HomeAssistant,
+  actions: TileActionConfig[] | undefined,
+  optionsFrom: string | undefined,
+  defaultTarget: string,
+  prefix: string
+): ResolvedAction[] {
+  if (Array.isArray(actions)) return actions.map((a, i) => resolveOne(hass, a, defaultTarget, `${prefix}${i}`));
+  if (!optionsFrom) return [];
+  const options = optionsOf(hass.states[optionsFrom]);
+  if (!usable(options.length)) return [];
+  return options.map((option, i) => resolveOne(hass, { option }, optionsFrom, `${prefix}${i}`));
+}
+
+export interface ActionRow {
+  actions: ResolvedAction[];
+  /** Buttons per line. */
+  columns: number;
+}
+
+export const clampColumns = (n: number | undefined, fallback = DEFAULT_COLUMNS) =>
+  Math.min(6, Math.max(1, Math.round(typeof n === "number" && !Number.isNaN(n) ? n : fallback)));
+
+/**
+ * Every row of buttons: the first (the card's `actions` / `action_entity`), then each of `button_rows`.
+ * A further row's buttons target its own `action_entity`, else the first row's. Empty rows are left out.
+ */
+export function resolveRows(hass: HomeAssistant, config: TilePulseCardConfig, actionEntity: string | undefined): ActionRow[] {
+  const columns = clampColumns(config.columns);
+  const rows: ActionRow[] = [{ actions: resolveActions(hass, config, actionEntity), columns }];
+  (config.button_rows ?? []).forEach((r: TileButtonRowConfig, i) => {
+    if (!r || typeof r !== "object") return;
+    const target = r.action_entity || actionEntity || config.entity;
+    rows.push({
+      actions: resolveRow(hass, r.actions, r.action_entity || undefined, target, `r${i + 1}/`),
+      columns: clampColumns(r.columns, columns),
+    });
+  });
+  return rows.filter((r) => r.actions.length);
+}
+
+function resolveOne(hass: HomeAssistant, a: TileActionConfig, defaultTarget: string, i: number | string): ResolvedAction {
   const hasOption = a.option !== undefined && a.option !== null && a.option !== "";
   const option = hasOption ? String(a.option) : undefined;
   const entity = a.entity ?? (hasOption ? defaultTarget : undefined);
@@ -363,6 +435,10 @@ export function watchedEntities(config: TilePulseCardConfig, actionEntity: strin
   if (config.entity) ids.add(config.entity);
   if (actionEntity) ids.add(actionEntity);
   for (const a of config.actions ?? []) if (a?.entity) ids.add(a.entity);
+  for (const r of config.button_rows ?? []) {
+    if (r?.action_entity) ids.add(r.action_entity);
+    for (const a of r?.actions ?? []) if (a?.entity) ids.add(a.entity);
+  }
   for (const c of stateContentList(config)) if (isEntityId(c)) ids.add(c);
   return ids;
 }

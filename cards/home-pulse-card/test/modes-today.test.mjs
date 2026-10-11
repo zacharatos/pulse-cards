@@ -147,3 +147,30 @@ test("today watches its calendars and entities", () => {
   assert.deepEqual(todayWatched(hass, { today: { entities: ["sensor.x", { entity: "sensor.y" }] } }), ["calendar.a", "sensor.x", "sensor.y"]);
   assert.deepEqual(todayWatched(hass, { today: false }), []);
 });
+
+test("mode_default gets no button of its own and a second tap on the lit mode goes back to it", () => {
+  const hass = mk(st("input_select.house_mode", "Night", { options: ["Normal", "Away", "Night"] }));
+  const modes = resolveModes(hass, { mode_default: "Normal" });
+  assert.deepEqual(modes.map((m) => [m.name, m.active]), [["Away", false], ["Night", true]]);
+  assert.equal(modes[1].resetTo, "Normal");
+  assert.deepEqual(modes[1].tap_action.data, { option: "Normal" });
+  assert.equal(modes[0].resetTo, undefined);
+  assert.deepEqual(modes[0].tap_action.data, { option: "Away" });
+});
+
+test("while the default option is current no mode is lit; a listed default keeps its button", () => {
+  const hass = mk(st("input_select.house_mode", "Normal", { options: ["Normal", "Away", "Night"] }));
+  assert.ok(resolveModes(hass, { mode_default: "Normal" }).every((m) => !m.active));
+  const listed = resolveModes(hass, { mode_default: "Normal", modes: [{ option: "Normal", icon: "mdi:home" }, { option: "Night" }] });
+  assert.deepEqual(listed.map((m) => [m.name, m.active, m.resetTo]), [["Normal", true, undefined], ["Night", false, undefined]]);
+});
+
+test("mode_default is ignored when the selector doesn't offer it, and an own tap_action wins", () => {
+  const hass = mk(st("input_select.house_mode", "Night", { options: ["Home", "Night"] }));
+  assert.equal(resolveModes(hass, { mode_default: "Normal" }).length, 2);
+  const own = { action: "more-info" };
+  const [m] = resolveModes(hass, { mode_default: "Home", modes: [{ option: "Night", tap_action: own }] });
+  assert.equal(m.active, true);
+  assert.equal(m.resetTo, undefined);
+  assert.deepEqual(m.tap_action, own);
+});

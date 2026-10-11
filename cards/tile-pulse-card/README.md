@@ -12,7 +12,8 @@ It replaces the "vertical stack in card + tile + a row of buttons" recipe with o
 ## Features
 
 - **Zero config for devices with modes.** `entity: switch.purifier` alone: if the purifier's device has one mode select (`Sleep`, `Manual`, `Auto`…), each option becomes a button. A fan's own presets, a thermostat's HVAC modes, a humidifier's modes, a water heater's operation modes and a media player's sources work the same way when they are the main entity.
-- **Buttons for anything.** Set an `option` on any entity (select, input_select, fan preset, climate HVAC mode or preset, humidifier mode, water heater mode, media source), toggle an entity, run a scene, script or button, or give a button any `tap_action`, `hold_action` and `double_tap_action`, with HA's own confirmation.
+- **More than one row.** `button_rows` adds rows under the first, each with buttons from its own entity: the purifier's mode on top, its fan level under it.
+- **Buttons for anything.** Set an `option` on any entity (select, input_select, fan preset, climate HVAC mode or preset, humidifier mode, water heater mode, media source, a number or input_number value), toggle an entity, run a scene, script or button, or give a button any `tap_action`, `hold_action` and `double_tap_action`, with HA's own confirmation.
 - **The current one is lit.** A stronger neutral fill with the colour on the icon (the family rule), and `aria-pressed` for screen readers. Option names are shown the way Home Assistant translates them; icons are guessed from the names in English and Greek (sleep, auto, manual, low, high, turbo, eco, heat, cool…).
 - **Answers at once.** A tapped mode lights up straight away and its icon breathes until the device confirms (at most a few seconds), so a slow purifier never feels like a missed tap.
 - **A native-looking tile.** Icon above the name (default) or beside it (`vertical: false`), the icon in Home Assistant's state colour while on, tap for more-info, tap the icon to toggle (only for things that are safe to toggle: never locks, covers or alarms). The line under the name shows the state and how long ago it changed by default, and can show attributes or other entities (PM2.5 next to the purifier's state).
@@ -48,6 +49,7 @@ entity: switch.living_room_purifier
 | `action_entity` | discovered | Where the buttons' options come from, and the target of every button with an `option`. `none` turns discovery off. |
 | `actions` | one per option of `action_entity` | The buttons. An empty list (`[]`) shows none. |
 | `columns` | `4` | Buttons per row (1–6). |
+| `button_rows` | – | More rows of buttons under the first. Each: `action_entity` (its buttons come from this entity's options, and its buttons with an `option` set it), `actions` (its own buttons, as below), `columns` (default: the card's). |
 | `show_names` | `true` | Names on the buttons. |
 | `hide_actions_when_off` | `false` | Hide the buttons while the main entity is off or unavailable. |
 
@@ -55,7 +57,7 @@ entity: switch.living_room_purifier
 
 | Field | What it does |
 | :- | :- |
-| `option` | The option to set on the button's entity (or on `action_entity`, or on the main entity). The button is lit while that option is current. |
+| `option` | The option to set on the button's entity (or on `action_entity`, or on the main entity). The button is lit while that option is current. For a `number` / `input_number` it is a value (`2`); one with 2–6 steps between its min and max gives one button per step on its own. |
 | `entity` | The entity this button works on. Without `option`: toggles it (light, switch, fan…), runs it (scene, script, button) or opens its dialog. Lit while it is on. |
 | `name`, `icon` | Default: the option's translated name and a guessed icon, or the entity's name and icon. |
 | `color` | Icon colour while lit. Default: the theme's accent. |
@@ -87,6 +89,15 @@ actions:
   - option: high
     name: High
     icon: mdi:fan-chevron-up
+```
+
+Two rows: the mode, then the fan level (a number from 1 to 3, one button per step):
+
+```yaml
+type: custom:tile-pulse-card
+entity: switch.living_purifier          # its mode select is found on the device
+button_rows:
+  - action_entity: number.living_purifier_fan_level
 ```
 
 Unrelated buttons on one tile:

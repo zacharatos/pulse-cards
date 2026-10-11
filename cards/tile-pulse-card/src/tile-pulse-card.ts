@@ -6,20 +6,21 @@ import { styleMap } from "lit/directives/style-map.js";
 import type { ActionConfig, HassEntity, HomeAssistant, TilePulseCardConfig } from "./types";
 import {
   balanceRows,
+  clampColumns,
   contentParts,
   cssColor,
-  DEFAULT_COLUMNS,
   defaultIconTap,
   discoverActionEntity,
   isActive,
   isOff,
   isUnavailable,
   optionsOf,
-  resolveActions,
+  resolveRows,
   stateColor,
   stateContentList,
   watchedEntities,
   withPending,
+  type ActionRow,
   type ResolvedAction,
 } from "./tile";
 import { actionHandler, type ActionKind } from "./action-handler";
@@ -92,6 +93,11 @@ export class TilePulseCard extends LitElement {
     for (const a of config.actions ?? []) {
       if (!a || typeof a !== "object") throw new Error("Every item in `actions` must be an object");
     }
+    if (config.button_rows !== undefined && !Array.isArray(config.button_rows)) throw new Error("`button_rows` must be a list");
+    for (const r of config.button_rows ?? []) {
+      if (!r || typeof r !== "object") throw new Error("Every item in `button_rows` must be an object");
+      if (r.actions !== undefined && !Array.isArray(r.actions)) throw new Error("`actions` in `button_rows` must be a list");
+    }
     if (config.state_content !== undefined && typeof config.state_content !== "string" && !Array.isArray(config.state_content)) {
       throw new Error("`state_content` must be a text or a list");
     }
@@ -102,7 +108,8 @@ export class TilePulseCard extends LitElement {
 
   getCardSize(): number {
     const n = this._config?.actions?.length ?? 3;
-    return 2 + (n ? balanceRows(n, this._columns()).length : 0);
+    const extra = (this._config?.button_rows ?? []).reduce((sum, r) => sum + Math.max(1, Math.ceil((r?.actions?.length ?? 3) / 6)), 0);
+    return 2 + (n ? balanceRows(n, clampColumns(this._config?.columns)).length : 0) + extra;
   }
 
   getGridOptions() {
@@ -158,9 +165,6 @@ export class TilePulseCard extends LitElement {
     }
   }
 
-  private _columns(): number {
-    return Math.min(6, Math.max(1, Math.round(this._config?.columns ?? DEFAULT_COLUMNS)));
-  }
 
   private _t = (key: string, vars?: Record<string, string | number>) => localize(this.hass, key, vars);
 
@@ -177,8 +181,8 @@ export class TilePulseCard extends LitElement {
       >`;
     }
     const showActions = !(config.hide_actions_when_off && isOff(s));
-    const actions = showActions ? this._actions() : [];
-    return html`<ha-card>${this._renderTile(s)}${actions.length ? this._renderActions(actions) : nothing}</ha-card>`;
+    const rows = showActions ? this._rows() : [];
+    return html`<ha-card>${this._renderTile(s)}${rows.length ? this._renderActions(rows) : nothing}</ha-card>`;
   }
 
   private _renderTile(s: HassEntity) {
@@ -233,21 +237,22 @@ export class TilePulseCard extends LitElement {
     `;
   }
 
-  private _actions(): ResolvedAction[] {
-    const resolved = resolveActions(this.hass!, this._config!, this._actionEntity);
+  private _rows(): ActionRow[] {
     const optimistic = new Map<string, string>();
     for (const p of this._pending.values()) if (p.option !== undefined) optimistic.set(p.entity, p.option);
-    return withPending(resolved, optimistic);
+    return resolveRows(this.hass!, this._config!, this._actionEntity).map((r) => ({ ...r, actions: withPending(r.actions, optimistic) }));
   }
 
-  private _renderActions(actions: ResolvedAction[]) {
+  private _renderActions(rows: ActionRow[]) {
     const showNames = this._config!.show_names !== false;
-    let start = 0;
     return html`
       <div class="actions">
-        ${balanceRows(actions.length, this._columns()).map((size) => {
-          const row = actions.slice(start, (start += size));
-          return html`<div class="row">${row.map((a) => this._renderAction(a, showNames))}</div>`;
+        ${rows.map(({ actions, columns }) => {
+          let start = 0;
+          return balanceRows(actions.length, columns).map((size) => {
+            const line = actions.slice(start, (start += size));
+            return html`<div class="row">${line.map((a) => this._renderAction(a, showNames))}</div>`;
+          });
         })}
       </div>
     `;

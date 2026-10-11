@@ -4,6 +4,8 @@ import { property, state } from "lit/decorators.js";
 import type { HomeAssistant, HomePulseCardConfig, ModeConfig, ShortcutConfig, TodayConfig, TodayEntity } from "./types";
 import { ALARM_MODES, DEFAULT_ALARM_MODES, DEFAULT_ALERT_CLASSES, DEFAULT_PULSE, DEFAULT_SECTIONS, PULSE_IDS, SECTION_IDS } from "./home";
 import { localize } from "./localize";
+import { discoverModeEntity } from "./modes";
+import { toList } from "./labels";
 
 type Schema = Record<string, unknown>;
 type ListKey = "shortcuts" | "modes";
@@ -25,7 +27,11 @@ const DEFAULTS: Record<string, unknown> = {
   battery_threshold: 20,
   columns: 4,
   show_names: true,
+  show_mode_names: true,
 };
+
+/** Form fields that are not config keys: they are folded back into `today:` and `label_filter:`. */
+const LABEL_FIELDS = ["label_include", "label_exclude", "label_match", "label_from_device"];
 
 /** Make sure HA's lazily-loaded form elements exist before rendering the editor. */
 async function loadHaElements(): Promise<void> {
@@ -181,7 +187,14 @@ export class HomePulseCardEditor extends LitElement {
         title: t("ed_section_modes"),
         icon: "mdi:home-switch-outline",
         flatten: true,
-        schema: [{ name: "mode_entity", selector: { entity: { filter: [{ domain: "input_select" }, { domain: "select" }] } } }],
+        schema: [
+          { name: "mode_entity", selector: { entity: { filter: [{ domain: "input_select" }, { domain: "select" }] } } },
+          {
+            name: "mode_default",
+            selector: { select: { mode: "dropdown", custom_value: true, options: this._modeOptions() } },
+          },
+          { name: "show_mode_names", selector: { boolean: {} } },
+        ],
       },
       {
         type: "expandable",
@@ -238,6 +251,30 @@ export class HomePulseCardEditor extends LitElement {
           { name: "exclude_entities", selector: { entity: { multiple: true } } },
         ],
       },
+      {
+        type: "expandable",
+        name: "",
+        title: t("ed_section_labels"),
+        icon: "mdi:label-multiple-outline",
+        flatten: true,
+        schema: [
+          { name: "label_include", selector: { label: { multiple: true } } },
+          { name: "label_exclude", selector: { label: { multiple: true } } },
+          {
+            name: "label_match",
+            selector: {
+              select: {
+                mode: "dropdown",
+                options: [
+                  { value: "any", label: t("ed_label_match_any") },
+                  { value: "all", label: t("ed_label_match_all") },
+                ],
+              },
+            },
+          },
+          { name: "label_from_device", selector: { boolean: {} } },
+        ],
+      },
       // Shortcuts configured on the overview keep working (and keep their options) until they are moved.
       ...(this._hasShortcuts() ? [this._tileGrid()] : []),
     ];
@@ -254,7 +291,8 @@ export class HomePulseCardEditor extends LitElement {
           { name: "icon", selector: { icon: {} } },
         ],
       },
-      { name: "navigation_path", selector: { text: {} } },
+      // HA's own picker: the dashboards and views, with room for a typed path ("lights").
+      { name: "navigation_path", selector: { navigation: {} } },
       {
         type: "grid",
         name: "",
@@ -265,7 +303,6 @@ export class HomePulseCardEditor extends LitElement {
             selector: {
               select: {
                 mode: "dropdown",
-                custom_value: true,
                 options: [
                   { value: "none", label: t("ed_badge_none") },
                   ...PULSE_IDS.map((p) => ({ value: p, label: t(`g_${p}`) })),
@@ -275,6 +312,7 @@ export class HomePulseCardEditor extends LitElement {
           },
         ],
       },
+      { name: "badge_entity", selector: { entity: {} } },
       { name: "entity", selector: { entity: {} } },
       { name: "tap_action", selector: { ui_action: {} } },
       { name: "hold_action", selector: { ui_action: {} } },
@@ -282,7 +320,16 @@ export class HomePulseCardEditor extends LitElement {
     ];
   }
 
-  private _modeSchema(): Schema[] {
+  /** The mode selector's options, for "back to normal". */
+  private _modeOptions(): { value: string; label: string }[] {
+    const me = this.hass && this._config ? discoverModeEntity(this.hass, this._config) : undefined;
+    const options = (me ? this.hass!.states[me]?.attributes.options : undefined) as string[] | undefined;
+    return (Array.isArray(options) ? options : []).map((o) => ({ value: o, label: o }));
+  }
+
+  private _modeSchema(item: ModeConfig): Schema[] {
+    // Without a name, the option is what the button stands for: ask for it.
+    const needsOption = !item.name && !item.entity && !item.tap_action;
     return [
       {
         type: "grid",
@@ -296,7 +343,11 @@ export class HomePulseCardEditor extends LitElement {
         type: "grid",
         name: "",
         schema: [
-          { name: "option", selector: { text: {} } },
+          {
+            name: "option",
+            required: needsOption,
+            selector: { select: { mode: "dropdown", custom_value: true, options: this._modeOptions() } },
+          },
           { name: "color", selector: { ui_color: {} } },
         ],
       },
@@ -306,13 +357,15 @@ export class HomePulseCardEditor extends LitElement {
     ];
   }
 
-  private _label = (s: { name: string }) => {
+  private _label = (s: { name: string; required?: boolean }) => {
+    if (s.name === "option" && s.required) return this._t("ed_option_required");
     const known = [
       "layout", "appearance", "sections", "title", "show_date", "center_greeting", "persons", "show_away",
       "weather_entity", "alarm_entity", "alarm_modes", "pulse", "show_inactive", "nudges", "battery_threshold",
       "alert_classes", "exclude_entities", "columns", "show_names", "name", "icon", "color", "navigation_path",
       "entity", "badge", "tap_action", "hold_action", "double_tap_action", "today_show", "today_tomorrow",
-      "today_calendars", "today_entities", "mode_entity", "option",
+      "today_calendars", "today_entities", "mode_entity", "option", "mode_default", "show_mode_names",
+      "badge_entity", ...LABEL_FIELDS,
     ];
     return known.includes(s.name) ? this._t(`ed_${s.name}`) : s.name;
   };
@@ -326,6 +379,10 @@ export class HomePulseCardEditor extends LitElement {
     return {
       ...this._defaults,
       ...c,
+      label_include: toList(c.label_filter?.include),
+      label_exclude: toList(c.label_filter?.exclude),
+      label_match: c.label_filter?.match ?? "any",
+      label_from_device: c.label_filter?.from_device ?? true,
       today_show: c.today !== false,
       today_tomorrow: today.tomorrow !== false,
       today_calendars: today.calendars ?? [],
@@ -360,6 +417,15 @@ export class HomePulseCardEditor extends LitElement {
     }
     const today = this._todayFrom(v);
     for (const k of ["today_show", "today_tomorrow", "today_calendars", "today_entities"]) delete v[k];
+    // Label fields back to `label_filter:`, keeping only what differs from the defaults.
+    const labelFilter = clean({
+      include: v.label_include,
+      exclude: v.label_exclude,
+      match: v.label_match === "all" ? "all" : undefined,
+      from_device: v.label_from_device === false ? false : undefined,
+    } as Record<string, unknown>);
+    for (const k of LABEL_FIELDS) delete v[k];
+    v.label_filter = Object.keys(labelFilter).length ? labelFilter : undefined;
     // Drop defaults so the YAML only says what the user changed.
     for (const [k, d] of Object.entries(this._defaults)) if (same(v[k], d)) delete v[k];
     const next = clean({
@@ -386,9 +452,31 @@ export class HomePulseCardEditor extends LitElement {
     ev.stopPropagation();
     const items = this._items(key);
     const value = { ...ev.detail.value } as Record<string, unknown>;
-    if (value.badge === "none") delete value.badge;
+    if (key === "shortcuts") this._foldBadge(value, items[i] as ShortcutConfig);
     items[i] = clean(value);
     this._setItems(key, items);
+  }
+
+  /**
+   * One `badge` key, two fields: a group from the dropdown or any entity from the picker. The one the user
+   * just changed wins; picking a group clears the entity.
+   */
+  private _foldBadge(value: Record<string, unknown>, prev: ShortcutConfig) {
+    const prevEntity = prev.badge?.includes(".") ? prev.badge : undefined;
+    const prevGroup = prevEntity ? "none" : prev.badge ?? "none";
+    const group = (value.badge as string | undefined) ?? "none";
+    const entity = value.badge_entity as string | undefined;
+    delete value.badge_entity;
+    if (group !== prevGroup) value.badge = group;
+    else if ((entity || undefined) !== prevEntity) value.badge = entity || "none";
+    else value.badge = prev.badge ?? "none";
+    if (value.badge === "none") delete value.badge;
+  }
+
+  /** A shortcut's badge shown in the two fields it is edited with. */
+  private _shortcutData(sc: ShortcutConfig): Record<string, unknown> {
+    const entity = sc.badge?.includes(".") ? sc.badge : undefined;
+    return { ...sc, badge: entity ? "none" : sc.badge ?? "none", badge_entity: entity };
   }
 
   private _addItem(key: ListKey) {
@@ -447,8 +535,9 @@ export class HomePulseCardEditor extends LitElement {
       <div class="section">
         <div class="section-title"><ha-icon icon="mdi:home-switch-outline"></ha-icon>${this._t("ed_section_modes")}</div>
         <p class="hint">${this._t(this._config.mode_entity && !modes.length ? "ed_modes_hint_auto" : "ed_modes_hint")}</p>
+        ${modes.length ? html`<p class="hint">${this._t("ed_modes_hint_names")}</p>` : nothing}
         ${modes.map((m, i) =>
-          this._renderItem("modes", m as Record<string, unknown>, i, modes.length, m.name || m.option || m.entity || this._t("ed_mode_n", { n: i + 1 }), m.icon, this._modeSchema(), {})
+          this._renderItem("modes", m as Record<string, unknown>, i, modes.length, m.name || m.option || m.entity || this._t("ed_mode_n", { n: i + 1 }), m.icon, this._modeSchema(m), {})
         )}
         <button class="add" @click=${() => this._addItem("modes")}>
           <ha-icon icon="mdi:plus"></ha-icon>${this._t("ed_add_mode")}
@@ -474,13 +563,13 @@ export class HomePulseCardEditor extends LitElement {
         ${shortcuts.map((sc, i) =>
           this._renderItem(
             "shortcuts",
-            sc as Record<string, unknown>,
+            this._shortcutData(sc),
             i,
             shortcuts.length,
             sc.name || sc.navigation_path || sc.entity || this._t("ed_shortcut_n", { n: i + 1 }),
             sc.icon,
             this._shortcutSchema(),
-            { badge: "none" }
+            {}
           )
         )}
         <button class="add" @click=${() => this._addItem("shortcuts")}>

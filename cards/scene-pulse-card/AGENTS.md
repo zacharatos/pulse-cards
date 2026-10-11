@@ -27,8 +27,8 @@ Every change carries its next version. Read the latest tag on the remote (`git l
 
 | File | What lives there |
 | --- | --- |
-| `src/scene-pulse-card.ts` | The element: selection cache, stored-config and label loading, rows, header (mode chip, new scene), the popover menu and "What it sets", run / undo / update actions, toasts. |
-| `src/scenes.ts` | Pure logic: selection, "active now" (stored targets or "untouched since it ran"), house mode discovery and label matching, rows, groups (mode section first), menu entries, undo snapshot, re-capture, target lines, watched entities, stub. Tested in `test/scenes.test.mjs`. |
+| `src/scene-pulse-card.ts` | The element: selection cache, stored-config and label loading, rows, header (Undo chip for two minutes after a run, mode chip, new scene), the popover menu and "What it sets", run / undo / update actions, toasts. |
+| `src/scenes.ts` | Pure logic: selection, "active now" (stored targets or "untouched since it ran"), house mode discovery and label matching, rows, groups (mode section first), menu entries, undo targets (the scene's members, else its stored config, else what is in its area) and snapshot, re-capture, target lines, watched entities, stub. Tested in `test/scenes.test.mjs`. |
 | `src/editor.ts` | Visual editor on `ha-form`; defaults are not written to YAML; `mode_entity: none` survives unrelated edits. |
 | `src/localize.ts` | All strings, `en` and `el`; relative times. `test/localize.test.mjs` checks both have the same keys and placeholders. |
 | `src/styles.ts` | `--scp-*` variables → `--pulse-*` tokens → HA variables → literals. |

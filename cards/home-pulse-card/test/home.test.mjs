@@ -278,3 +278,29 @@ test("nudges off: lights are not watched without a pulse block", () => {
   assert.ok(!w.has("light.kitchen"));
   assert.ok(!w.has("binary_sensor.kitchen_window"));
 });
+
+test("label_filter leaves labelled entities (or their device's) out of every group", async () => {
+  const { resolveLabelFilter } = await import("../src/labels.ts");
+  const st = (entity_id, state, attributes = {}) => ({ entity_id, state, attributes, last_changed: "", last_updated: "" });
+  const hass = {
+    states: Object.fromEntries(
+      [st("lock.front_door", "unlocked"), st("lock.humidifier_child_lock", "unlocked"), st("light.hall", "on")].map((s) => [s.entity_id, s])
+    ),
+    entities: {
+      "lock.front_door": { entity_id: "lock.front_door" },
+      "lock.humidifier_child_lock": { entity_id: "lock.humidifier_child_lock", device_id: "dev_humidifier" },
+      "light.hall": { entity_id: "light.hall", labels: ["not_on_dashboard"] },
+    },
+    devices: { dev_humidifier: { id: "dev_humidifier", labels: ["not_on_dashboard"] } },
+    areas: {},
+    language: "en",
+  };
+  const all = indexHome(hass, {});
+  assert.deepEqual(all.locks, ["lock.front_door", "lock.humidifier_child_lock"]);
+  const filter = resolveLabelFilter({ exclude: "Not on dashboard" }, [{ label_id: "not_on_dashboard", name: "Not on dashboard" }]);
+  const index = indexHome(hass, {}, filter);
+  assert.deepEqual(index.locks, ["lock.front_door"]);
+  assert.deepEqual(index.lights, []);
+  const deviceOnly = indexHome(hass, {}, resolveLabelFilter({ exclude: "not_on_dashboard", from_device: false }));
+  assert.deepEqual(deviceOnly.locks, ["lock.front_door", "lock.humidifier_child_lock"]);
+});

@@ -336,6 +336,32 @@ export function menuFor(row: Row, opts: { admin: boolean; canUndo: boolean; hasC
 
 // ---- Undo and "Update from now" -------------------------------------------------------------------------
 
+/** What scenes from integrations (Hue, Zigbee groups...) usually set, when they don't say which entities. */
+const UNDO_DOMAINS = new Set(["light", "switch", "fan", "cover", "climate", "media_player"]);
+
+/** The area of an entity, directly or through its device. */
+export function areaOf(hass: HomeAssistant, id: string): string | undefined {
+  const e = hass.entities[id];
+  return e?.area_id ?? (e?.device_id ? hass.devices?.[e.device_id]?.area_id ?? undefined : undefined);
+}
+
+/**
+ * The entities Undo remembers before a run. Scenes made in Home Assistant name them (their `entity_id`
+ * attribute, or the stored config). Scenes from integrations don't (a Hue scene only says its room): then
+ * the lights, switches, fans, covers, climate and media players in the scene's area, so Undo still puts the
+ * room back. A scene with neither has no Undo.
+ */
+export function undoTargets(hass: HomeAssistant, sceneId: string, members: string[], stored?: SceneConfig): string[] {
+  if (members.length) return members;
+  const configured = Object.keys(stored?.entities ?? {});
+  if (configured.length) return configured;
+  const area = areaOf(hass, sceneId);
+  if (!area) return [];
+  return Object.keys(hass.states)
+    .filter((id) => UNDO_DOMAINS.has(domainOf(id)) && areaOf(hass, id) === area)
+    .sort();
+}
+
 /** The `scene.create` call that remembers the scene's entities as they are now, so Undo can put them back. */
 export function undoSnapshot(members: string[]): { scene_id: string; snapshot_entities: string[] } | undefined {
   const ids = members.filter((id) => !isScene(id));

@@ -17,6 +17,7 @@ import {
   stubEntities,
   targetLines,
   undoSnapshot,
+  undoTargets,
   watched,
   UNDO_ENTITY,
   type Group,
@@ -36,6 +37,8 @@ const RUNNING_MS = 8000;
 const DONE_MS = 1600;
 /** How long the Undo toast stays. */
 const UNDO_TOAST_MS = 10_000;
+/** How long the Undo chip stays in the header after a run (the ⋯ menu keeps offering it after that). */
+const UNDO_CHIP_MS = 120_000;
 /** After a confirmed run (through HA's dialog), how long we watch for the scene to run before giving up. */
 const CONFIRM_WATCH_MS = 60_000;
 
@@ -86,6 +89,9 @@ export class ScenePulseCard extends LitElement {
   private _awaiting = new Map<string, { before?: string; undo: boolean; timer: number }>();
   /** The scene last run from this card whose "before" is held in the undo scene. */
   private _undoFor?: string;
+  /** The Undo chip in the header: shown for a while after a run, so Undo never depends on catching the toast. */
+  @state() private _undoChip = false;
+  private _undoTimer?: number;
   private _configKeys = new Map<string, string>();
   private _labelsLoaded = false;
   private _ticker?: number;
@@ -144,6 +150,8 @@ export class ScenePulseCard extends LitElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    window.clearTimeout(this._undoTimer);
+    this._undoChip = false;
     if (this._ticker) window.clearInterval(this._ticker);
     for (const r of this._running.values()) window.clearTimeout(r.timer);
     for (const t of this._done.values()) window.clearTimeout(t);
@@ -195,7 +203,7 @@ export class ScenePulseCard extends LitElement {
         window.clearTimeout(a.timer);
         this._awaiting.delete(id);
         this._markDone(id);
-        if (a.undo) this._undoFor = id;
+        if (a.undo) this._offerUndo(id);
         this._ranToast(id, a.undo);
       }
     }
@@ -310,11 +318,18 @@ export class ScenePulseCard extends LitElement {
     const title = this._config!.title ?? this._t("title");
     // "New scene" sits next to a title; a card without one stays a bare list (the empty state still offers it).
     const admin = !!title && this._admin && this._ids.length > 0;
-    if (!title && !mode && !admin) return nothing;
+    const undo = this._undoChip && this._undoOn && !!this._undoFor && !!this.hass!.states[UNDO_ENTITY];
+    if (!title && !mode && !admin && !undo) return nothing;
     const name = mode ? this._modeName(mode) : "";
+    const undoLabel = undo ? this._t("undo_chip", { name: displayName(this.hass!, this._undoFor!) }) : "";
     return html`<div class="header">
       ${title ? html`<span class="title">${title}</span>` : nothing}
       <div class="chips">
+        ${undo
+          ? html`<button class="chip" title=${undoLabel} aria-label=${undoLabel} @click=${() => this._undo()}>
+              <ha-icon icon="mdi:undo-variant"></ha-icon>${this._t("undo")}
+            </button>`
+          : nothing}
         ${mode
           ? html`<button class="chip" title=${this._t("mode_chip", { mode: name })} aria-label=${this._t("mode_chip", { mode: name })}
               @click=${() => this._fire(this._modeEntity!, { action: "more-info" })}>
@@ -565,7 +580,8 @@ export class ScenePulseCard extends LitElement {
   /** Remember how the scene's entities are now, so Undo can put them back. False when that didn't work. */
   private async _snapshot(row: Row): Promise<boolean> {
     if (!this._undoOn) return false;
-    const data = undoSnapshot(row.members);
+    const stored = row.id ? this._configs.get(row.id) : undefined;
+    const data = undoSnapshot(undoTargets(this.hass!, row.entity_id, row.members, stored));
     if (!data) return false;
     try {
       await this.hass!.callService("scene", "create", data);
@@ -612,7 +628,7 @@ export class ScenePulseCard extends LitElement {
     this.requestUpdate();
     try {
       await this.hass!.callService("scene", "turn_on", this._runData(), { entity_id: row.entity_id });
-      if (undo) this._undoFor = row.entity_id;
+      if (undo) this._offerUndo(row.entity_id);
       this._ranToast(row.entity_id, undo);
     } catch (err) {
       window.clearTimeout(timer);
@@ -620,6 +636,13 @@ export class ScenePulseCard extends LitElement {
       this.requestUpdate();
       toast(this, this._t("error", { error: errorMessage(err) }));
     }
+  }
+
+  private _offerUndo(eid: string) {
+    this._undoFor = eid;
+    this._undoChip = true;
+    window.clearTimeout(this._undoTimer);
+    this._undoTimer = window.setTimeout(() => (this._undoChip = false), UNDO_CHIP_MS);
   }
 
   private _ranToast(eid: string, undo: boolean) {
@@ -636,6 +659,8 @@ export class ScenePulseCard extends LitElement {
     try {
       await this.hass!.callService("scene", "turn_on", {}, { entity_id: UNDO_ENTITY });
       this._undoFor = undefined;
+      this._undoChip = false;
+      window.clearTimeout(this._undoTimer);
       toast(this, this._t("undone"));
       this.requestUpdate();
     } catch (err) {

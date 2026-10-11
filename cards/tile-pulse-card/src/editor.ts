@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
-import type { HomeAssistant, TileActionConfig, TilePulseCardConfig } from "./types";
+import type { HomeAssistant, TileActionConfig, TileButtonRowConfig, TilePulseCardConfig } from "./types";
 import { DEFAULT_COLUMNS, DEFAULT_STATE_CONTENT, discoverActionEntity, guessOptionIcon, optionLabel, optionsOf, stateContentList } from "./tile";
 import { localize } from "./localize";
 
@@ -16,7 +16,9 @@ const DEFAULTS: Record<string, unknown> = {
 };
 
 /** Domains whose options can become buttons (same list as `tile.ts`). */
-const OPTION_DOMAINS = ["select", "input_select", "fan", "climate", "humidifier", "water_heater", "media_player"];
+const OPTION_DOMAINS = ["select", "input_select", "fan", "climate", "humidifier", "water_heater", "media_player", "number", "input_number"];
+/** The first row of buttons is row -1 (the card's own `actions`); `button_rows[r]` are rows 0, 1, ... */
+const MAIN = -1;
 const TIME_CONTENT = ["state", "last_changed", "last_updated"];
 const isEntityId = (v: string) => /^[a-z_]+\.[a-z0-9_]+$/.test(v);
 
@@ -47,8 +49,8 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 export class TilePulseCardEditor extends LitElement {
   @property({ attribute: false }) hass?: HomeAssistant;
   @state() private _config?: TilePulseCardConfig;
-  /** Open buttons in the list, by index. */
-  @state() private _open = new Set<number>();
+  /** Open list items: "row:2" for a further row, "-1:0" / "2:1" for a button in a row. */
+  @state() private _open = new Set<string>();
   @state() private _ready = false;
 
   connectedCallback(): void {
@@ -142,8 +144,25 @@ export class TilePulseCardEditor extends LitElement {
     ];
   }
 
-  private _actionSchema(item: TileActionConfig): Schema[] {
-    const target = item.entity ?? this._actionEntity() ?? this._config?.entity;
+  private _rowSchema(): Schema[] {
+    return [
+      { name: "action_entity", selector: { entity: { filter: OPTION_DOMAINS.map((domain) => ({ domain })) } } },
+      { name: "columns", selector: { number: { min: 1, max: 6, mode: "slider" } } },
+    ];
+  }
+
+  private _buttonRows(): TileButtonRowConfig[] {
+    return [...(this._config?.button_rows ?? [])];
+  }
+
+  /** The entity a row's buttons set their option on by default. */
+  private _rowTarget(r: number): string | undefined {
+    const own = r === MAIN ? undefined : this._config?.button_rows?.[r]?.action_entity;
+    return own || this._actionEntity() || this._config?.entity;
+  }
+
+  private _actionSchema(item: TileActionConfig, r: number): Schema[] {
+    const target = item.entity ?? this._rowTarget(r);
     const s = target ? this.hass?.states[target] : undefined;
     // Option values as they are, labelled the way HA shows them (a combo box shows the value it holds).
     const options = optionsOf(s).map((o) => ({ value: o, label: o }));
@@ -197,69 +216,116 @@ export class TilePulseCardEditor extends LitElement {
     delete v.info_entities;
     v.state_content = same(content, DEFAULT_STATE_CONTENT) ? undefined : content;
     for (const [k, d] of Object.entries(DEFAULTS)) if (same(v[k], d)) delete v[k];
-    const next = clean({ ...v, actions: undefined }) as unknown as TilePulseCardConfig;
+    const next = clean({ ...v, actions: undefined, button_rows: undefined }) as unknown as TilePulseCardConfig;
     // An empty line under the name and an empty button list are both deliberate: keep them.
     if (Array.isArray(v.state_content) && !v.state_content.length) next.state_content = [];
     if (this._config?.actions) next.actions = this._config.actions;
+    if (this._config?.button_rows?.length) next.button_rows = this._config.button_rows;
     this._commit(next);
   }
 
   // ---- Buttons ------------------------------------------------------------
 
-  /** The buttons the card draws today on its own, written out so they can be edited. */
-  private _autoActions(): TileActionConfig[] {
-    const target = this._actionEntity();
+  /** The buttons a row draws today on its own, written out so they can be edited. */
+  private _autoActions(r: number): TileActionConfig[] {
+    const target = r === MAIN ? this._actionEntity() : this._config?.button_rows?.[r]?.action_entity;
     if (!target || !this.hass) return [];
     return optionsOf(this.hass.states[target]).map((option) => ({ option, icon: guessOptionIcon(option) }));
   }
 
-  private _items(): TileActionConfig[] {
-    return [...(this._config?.actions ?? [])];
+  private _rowActions(r: number): TileActionConfig[] | undefined {
+    return r === MAIN ? this._config?.actions : this._config?.button_rows?.[r]?.actions;
   }
 
-  private _setItems(items: TileActionConfig[]) {
-    this._commit({ ...this._config!, actions: items });
+  private _items(r: number): TileActionConfig[] {
+    return [...(this._rowActions(r) ?? [])];
   }
 
-  private _itemChanged(i: number, ev: CustomEvent) {
+  private _setItems(r: number, items: TileActionConfig[]) {
+    if (r === MAIN) {
+      this._commit({ ...this._config!, actions: items });
+      return;
+    }
+    const rows = this._buttonRows();
+    rows[r] = { ...rows[r], actions: items };
+    this._commit({ ...this._config!, button_rows: rows });
+  }
+
+  private _itemChanged(r: number, i: number, ev: CustomEvent) {
     ev.stopPropagation();
-    const items = this._items();
+    const items = this._items(r);
     items[i] = clean({ ...ev.detail.value }) as TileActionConfig;
-    this._setItems(items);
+    this._setItems(r, items);
   }
 
-  private _customize() {
+  private _customize(r: number) {
     this._open = new Set();
-    this._setItems(this._autoActions());
+    this._setItems(r, this._autoActions(r));
   }
 
-  private _addItem() {
-    const items = this._config?.actions ? this._items() : this._autoActions();
+  private _addItem(r: number) {
+    const items = this._rowActions(r) ? this._items(r) : this._autoActions(r);
     items.push({});
-    this._open = new Set([items.length - 1]);
-    this._setItems(items);
+    this._open = new Set([...this._open, `${r}:${items.length - 1}`]);
+    this._setItems(r, items);
   }
 
-  private _removeItem(i: number) {
-    const items = this._items();
+  private _removeItem(r: number, i: number) {
+    const items = this._items(r);
     items.splice(i, 1);
-    this._open = new Set();
-    this._setItems(items);
+    this._open = new Set([...this._open].filter((k) => k.startsWith("row:")));
+    this._setItems(r, items);
   }
 
-  private _moveItem(i: number, dir: -1 | 1) {
-    const items = this._items();
+  private _moveItem(r: number, i: number, dir: -1 | 1) {
+    const items = this._items(r);
     const j = i + dir;
     if (j < 0 || j >= items.length) return;
     [items[i], items[j]] = [items[j], items[i]];
-    this._open = new Set();
-    this._setItems(items);
+    this._open = new Set([...this._open].filter((k) => k.startsWith("row:")));
+    this._setItems(r, items);
   }
 
-  private _toggleOpen(i: number) {
+  private _toggleOpen(key: string) {
     const open = new Set(this._open);
-    open.has(i) ? open.delete(i) : open.add(i);
+    open.has(key) ? open.delete(key) : open.add(key);
     this._open = open;
+  }
+
+  // ---- Further rows -------------------------------------------------------
+
+  private _addRow() {
+    const rows = this._buttonRows();
+    rows.push({});
+    this._open = new Set([...this._open, `row:${rows.length - 1}`]);
+    this._commit({ ...this._config!, button_rows: rows });
+  }
+
+  private _removeRow(r: number) {
+    const rows = this._buttonRows();
+    rows.splice(r, 1);
+    this._open = new Set();
+    this._commit(clean({ ...this._config!, button_rows: rows }) as TilePulseCardConfig);
+  }
+
+  private _moveRow(r: number, dir: -1 | 1) {
+    const rows = this._buttonRows();
+    const j = r + dir;
+    if (j < 0 || j >= rows.length) return;
+    [rows[r], rows[j]] = [rows[j], rows[r]];
+    this._open = new Set();
+    this._commit({ ...this._config!, button_rows: rows });
+  }
+
+  private _rowChanged(r: number, ev: CustomEvent) {
+    ev.stopPropagation();
+    const rows = this._buttonRows();
+    const v = { ...ev.detail.value } as Record<string, unknown>;
+    if (same(v.columns, this._config?.columns ?? DEFAULT_COLUMNS)) delete v.columns;
+    // A new options entity means new buttons: drop the ones written out for the old one.
+    const actions = v.action_entity !== rows[r]?.action_entity ? undefined : rows[r]?.actions;
+    rows[r] = clean({ ...v, actions }) as TileButtonRowConfig;
+    this._commit({ ...this._config!, button_rows: rows });
   }
 
   private _commit(config: TilePulseCardConfig) {
@@ -279,73 +345,130 @@ export class TilePulseCardEditor extends LitElement {
         .computeLabel=${this._label}
         @value-changed=${this._mainChanged}
       ></ha-form>
-      ${this._renderActionList()}
+      <div class="section">
+        <div class="section-title"><ha-icon icon="mdi:gesture-tap-button"></ha-icon>${this._t("ed_section_actions")}</div>
+        ${this._renderActionList(MAIN)}
+      </div>
+      ${this._renderRows()}
     `;
   }
 
-  private _renderActionList() {
-    const actions = this._config!.actions;
-    const auto = this._actionEntity();
-    const autoCount = actions ? 0 : this._autoActions().length;
-    const autoName = auto ? String(this.hass!.states[auto]?.attributes.friendly_name ?? auto) : "";
+  private _entityName(id: string | undefined): string {
+    return id ? String(this.hass!.states[id]?.attributes.friendly_name ?? id) : "";
+  }
+
+  /** A row's buttons: the hint, "customise" while they are automatic, the list and "add". */
+  private _renderActionList(r: number) {
+    const actions = this._rowActions(r);
+    const auto = r === MAIN ? this._actionEntity() : this._config!.button_rows?.[r]?.action_entity;
+    const autoCount = actions ? 0 : this._autoActions(r).length;
+    return html`
+      ${actions
+        ? html`<p class="hint">${this._t("ed_actions_hint")}</p>`
+        : autoCount
+        ? html`<p class="hint">${this._t("ed_auto_hint", { entity: this._entityName(auto) })}</p>
+            <button class="add" @click=${() => this._customize(r)}>
+              <ha-icon icon="mdi:pencil-outline"></ha-icon>${this._t("ed_customize")}
+            </button>`
+        : html`<p class="hint">${this._t(r === MAIN ? "ed_auto_none" : "ed_row_none")}</p>`}
+      ${(actions ?? []).map((a, i) => this._renderItem(a, r, i, actions!.length))}
+      <button class="add" @click=${() => this._addItem(r)}>
+        <ha-icon icon="mdi:plus"></ha-icon>${this._t("ed_add_action")}
+      </button>
+    `;
+  }
+
+  /** The further rows: each one an item with its options entity, its width and its own button list. */
+  private _renderRows() {
+    const rows = this._config!.button_rows ?? [];
     return html`
       <div class="section">
-        <div class="section-title"><ha-icon icon="mdi:gesture-tap-button"></ha-icon>${this._t("ed_section_actions")}</div>
-        ${actions
-          ? html`<p class="hint">${this._t("ed_actions_hint")}</p>`
-          : autoCount
-          ? html`<p class="hint">${this._t("ed_auto_hint", { entity: autoName })}</p>
-              <button class="add" @click=${this._customize}>
-                <ha-icon icon="mdi:pencil-outline"></ha-icon>${this._t("ed_customize")}
-              </button>`
-          : html`<p class="hint">${this._t("ed_auto_none")}</p>`}
-        ${(actions ?? []).map((a, i) => this._renderItem(a, i, actions!.length))}
-        <button class="add" @click=${this._addItem}>
-          <ha-icon icon="mdi:plus"></ha-icon>${this._t("ed_add_action")}
+        <div class="section-title"><ha-icon icon="mdi:table-row-plus-after"></ha-icon>${this._t("ed_section_rows")}</div>
+        <p class="hint">${this._t("ed_rows_hint")}</p>
+        ${rows.map((row, r) => {
+          const key = `row:${r}`;
+          const open = this._open.has(key);
+          const title = row.action_entity ? this._entityName(row.action_entity) : this._t("ed_row_n", { n: r + 2 });
+          return html`
+            <div class="item">
+              ${this._itemHead(key, open, title, undefined, r, rows.length, (dir) => this._moveRow(r, dir), () => this._removeRow(r))}
+              ${open
+                ? html`<div class="item-body rows">
+                    <ha-form
+                      .hass=${this.hass}
+                      .data=${{ columns: this._config!.columns ?? DEFAULT_COLUMNS, ...row }}
+                      .schema=${this._rowSchema()}
+                      .computeLabel=${this._label}
+                      @value-changed=${(e: CustomEvent) => this._rowChanged(r, e)}
+                    ></ha-form>
+                    ${this._renderActionList(r)}
+                  </div>`
+                : nothing}
+            </div>
+          `;
+        })}
+        <button class="add" @click=${this._addRow}>
+          <ha-icon icon="mdi:plus"></ha-icon>${this._t("ed_add_row")}
         </button>
       </div>
     `;
   }
 
-  private _itemTitle(a: TileActionConfig, i: number): string {
+  private _itemTitle(a: TileActionConfig, r: number, i: number): string {
     if (a.name) return a.name;
     if (a.option !== undefined) {
-      const target = a.entity ?? this._actionEntity() ?? this._config!.entity;
+      const target = a.entity ?? this._rowTarget(r) ?? this._config!.entity;
       return optionLabel(this.hass, this.hass!.states[target], String(a.option));
     }
-    if (a.entity) return String(this.hass!.states[a.entity]?.attributes.friendly_name ?? a.entity);
+    if (a.entity) return this._entityName(a.entity);
     return this._t("ed_action_n", { n: i + 1 });
   }
 
-  private _renderItem(item: TileActionConfig, i: number, total: number) {
-    const open = this._open.has(i);
+  private _itemHead(
+    key: string,
+    open: boolean,
+    title: string,
+    icon: string | undefined,
+    i: number,
+    total: number,
+    move: (dir: -1 | 1) => void,
+    remove: () => void
+  ) {
+    return html`
+      <div class="item-head">
+        <button class="head-main" @click=${() => this._toggleOpen(key)} aria-expanded=${String(open)}>
+          <ha-icon .icon=${open ? "mdi:chevron-down" : "mdi:chevron-right"}></ha-icon>
+          ${icon ? html`<ha-icon class="sc-icon" .icon=${icon}></ha-icon>` : nothing}
+          <span>${title}</span>
+        </button>
+        <button class="icon-btn" title=${this._t("ed_move_up")} ?disabled=${i === 0} @click=${() => move(-1)}>
+          <ha-icon icon="mdi:arrow-up"></ha-icon>
+        </button>
+        <button class="icon-btn" title=${this._t("ed_move_down")} ?disabled=${i === total - 1} @click=${() => move(1)}>
+          <ha-icon icon="mdi:arrow-down"></ha-icon>
+        </button>
+        <button class="icon-btn danger" title=${this._t("ed_remove")} @click=${remove}>
+          <ha-icon icon="mdi:delete-outline"></ha-icon>
+        </button>
+      </div>
+    `;
+  }
+
+  private _renderItem(item: TileActionConfig, r: number, i: number, total: number) {
+    const key = `${r}:${i}`;
+    const open = this._open.has(key);
     return html`
       <div class="item">
-        <div class="item-head">
-          <button class="head-main" @click=${() => this._toggleOpen(i)} aria-expanded=${String(open)}>
-            <ha-icon .icon=${open ? "mdi:chevron-down" : "mdi:chevron-right"}></ha-icon>
-            ${item.icon ? html`<ha-icon class="sc-icon" .icon=${item.icon}></ha-icon>` : nothing}
-            <span>${this._itemTitle(item, i)}</span>
-          </button>
-          <button class="icon-btn" title=${this._t("ed_move_up")} ?disabled=${i === 0} @click=${() => this._moveItem(i, -1)}>
-            <ha-icon icon="mdi:arrow-up"></ha-icon>
-          </button>
-          <button class="icon-btn" title=${this._t("ed_move_down")} ?disabled=${i === total - 1} @click=${() => this._moveItem(i, 1)}>
-            <ha-icon icon="mdi:arrow-down"></ha-icon>
-          </button>
-          <button class="icon-btn danger" title=${this._t("ed_remove")} @click=${() => this._removeItem(i)}>
-            <ha-icon icon="mdi:delete-outline"></ha-icon>
-          </button>
-        </div>
+        ${this._itemHead(key, open, this._itemTitle(item, r, i), item.icon, i, total, (dir) => this._moveItem(r, i, dir), () => this._removeItem(r, i))}
         ${open
           ? html`
               <div class="item-body">
                 <ha-form
                   .hass=${this.hass}
                   .data=${item}
-                  .schema=${this._actionSchema(item)}
+                  .schema=${this._actionSchema(item, r)}
                   .computeLabel=${this._label}
-                  @value-changed=${(e: CustomEvent) => this._itemChanged(i, e)}
+                  @value-changed=${(e: CustomEvent) => this._itemChanged(r, i, e)}
                 ></ha-form>
               </div>
             `
@@ -377,6 +500,7 @@ export class TilePulseCardEditor extends LitElement {
     .icon-btn { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; }
     .icon-btn.danger ha-icon { color: var(--error-color, #db4437); }
     .item-body { padding: 4px 12px 12px; border-top: 1px solid var(--divider-color); }
+    .item-body.rows { display: flex; flex-direction: column; gap: 8px; }
     .hint { margin: 0; font-size: 13px; color: var(--secondary-text-color); }
     .add {
       display: flex; align-items: center; justify-content: center; gap: 6px;

@@ -22,6 +22,7 @@ export interface EntityRegistryDisplayEntry {
   entity_id: string;
   name?: string | null;
   area_id?: string | null;
+  device_id?: string | null;
   hidden?: boolean;
   labels?: string[];
 }
@@ -30,6 +31,7 @@ export interface HomeAssistant {
   states: Record<string, HassEntity>;
   entities: Record<string, EntityRegistryDisplayEntry>;
   areas?: Record<string, { area_id: string; name: string }>;
+  devices?: Record<string, { id: string; area_id?: string | null }>;
   user?: { is_admin?: boolean };
   language: string;
   locale?: { language: string; time_format?: string };

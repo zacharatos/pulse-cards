@@ -12,7 +12,7 @@ Your Home Assistant scenes in one calm list. See which scene is really on right 
 
 - **One row per scene**: icon, name, when it last ran, a run button and a menu. About half the height of a tile card with an *Activate* feature.
 - **Active now**: for scenes made in the UI, the card compares what the scene sets with how things are, and lights the scenes that match. For other scenes, the one that ran last stays active until something it set changes.
-- **Undo**: just before a run, the card remembers how the scene's entities were. The toast after the run has an *Undo* button that puts them back.
+- **Undo**: just before a run, the card remembers how the scene's entities were. The toast after the run has an *Undo* button that puts them back, an *Undo* chip waits in the card's header for two minutes, and the scene's ⋯ menu keeps offering it until the next run.
 - **House mode first**: give scenes a label named like a mode option (for example *Night*). While the house is in that mode, those scenes sit in their own section at the top, and the header shows the mode.
 - **Labels or a list**: show every scene, a list you pick, every scene with a label (new ones appear on their own), or a mix; `exclude` hides some.
 - **What it sets**: the menu lists every entity the scene sets and its target (*On · 25%*, *Closed · 0%*). Targets that already match are highlighted.
@@ -70,7 +70,7 @@ The card finds your house mode selector the same way Home Pulse Card does. To ti
 
 ## Undo
 
-Undo uses Home Assistant's own `scene.create` with `snapshot_entities`, under the id `scene_pulse_undo`. It is one shared snapshot, kept in memory until Home Assistant restarts; the last run from any dashboard wins. It never shows in the card.
+Undo uses Home Assistant's own `scene.create` with `snapshot_entities`, under the id `scene_pulse_undo`. It remembers the entities the scene sets: the ones a scene made in Home Assistant lists. Scenes from integrations (Hue and the like) don't say which entities they set, so for those the card remembers the lights, switches, fans, covers, climate and media players in the scene's area; a scene from an integration with no area has no Undo. It is one shared snapshot, kept in memory until Home Assistant restarts; the last run from any dashboard wins. It never shows in the card.
 
 ## Development
 
