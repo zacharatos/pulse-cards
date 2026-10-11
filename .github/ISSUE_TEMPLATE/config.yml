@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and showing off your dashboard
+    url: https://community.home-assistant.io/search?q=%22Pulse%20Cards%22
+    about: The Pulse Cards thread on the Home Assistant community forum.

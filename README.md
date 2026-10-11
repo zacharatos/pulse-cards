@@ -2,6 +2,10 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
 
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=zacharatos&repository=pulse-cards&category=plugin)
+
+![Pulse Cards on a dashboard, with the Pulse Glass theme](https://raw.githubusercontent.com/zacharatos/pulse-cards/main/docs/hero-dark.jpg)
+
 A calm family of dashboard cards for Home Assistant, in one download. **Every Pulse card lives here, today's and every one still to come**; only the Pulse integrations, which bring their own card, have repositories of their own. They share one look (the same radii, chip shapes, motion and colour rules), read the [Pulse theme](https://github.com/zacharatos/pulse-theme)'s `--pulse-*` tokens first and fall back to your own theme, and sit comfortably next to Home Assistant's native cards.
 
 The cards so far (more are on the way, and each new one arrives in this same download):
@@ -30,11 +34,22 @@ This repository is where the Pulse cards live, and it is meant to grow. The rule
 
 New cards are listed in [CHANGELOG.md](CHANGELOG.md) under the release that brings them. A new card is a minor release: it adds something and changes nothing you already use.
 
+## How these cards are made
+
+**Built with AI coding agents, tested by a person, in a real home.** I design every card: what it is for, how it looks, how it behaves. AI coding agents (mostly Claude) write a large part of the code, following written rules that are public in this repository ([`AGENTS.md`](AGENTS.md)). Before anything reaches you:
+
+- **I review every change and commit it myself.** The agents are not allowed to commit, tag or release; a person decides what ships.
+- **It passes the checks:** type checking, unit tests for the logic of every card, a build, and the HACS validation, on every push.
+- **I look at it** in each card's test page with invented data: light and dark, English and Greek, phone width, each Pulse theme.
+- **It runs on my own Home Assistant first.** Every release is installed and used at home, and fine-tuned there, before it is tagged for everyone. If something only works in a demo, it doesn't ship.
+
+Found something that doesn't behave in *your* home? [Open an issue](https://github.com/zacharatos/pulse-cards/issues/new/choose): every home is different, and that is exactly the feedback the agents can't give me.
+
 ## Installation
 
 ### HACS (custom repository)
 
-1. HACS → ⋮ → **Custom repositories** → add `https://github.com/zacharatos/pulse-cards`, type **Dashboard**.
+1. Click the **Open in HACS** button above, or: HACS → ⋮ → **Custom repositories** → add `https://github.com/zacharatos/pulse-cards`, type **Dashboard**.
 2. Search for **Pulse Cards** → **Download**. HACS adds one dashboard resource, `/hacsfiles/pulse-cards/pulse-cards.js`, which holds every card, including the ones added later.
 3. Reload the browser (clear the cache if the cards don't show up in the card picker). The browser console shows `PULSE-CARDS vX.Y.Z`.
 

@@ -76,6 +76,8 @@ Don't write a commit message unless he asks for one. If he does, offer it as a s
 | `scripts/check-version.mjs` | Fails when `package.json`, `package-lock.json`, `src/version.ts`, the bundle (and a tag, if given) disagree. |
 | `scripts/changelog-notes.mjs` | Prints one version's `CHANGELOG.md` section; the release body. |
 | `scripts/import-history.sh` | One-shot migration that brought in the four old repositories' history. Not part of the build. |
+| `docs/hero-dark.jpg`, `docs/hero-light.jpg` | The README's first image (Pulse Theme's `test/dashboard.html`, Pulse Cards only, 2×). Also the GitHub social preview and the launch post's images. |
+| `.github/ISSUE_TEMPLATE/` | Issue forms for bugs (asks for card, YAML, versions, browser, theme) and ideas (asks for the need first). `config.yml` links questions to the forum thread. |
 | `.github/workflows/validate.yml` | HACS validation; `npm ci`, typecheck, tests, build, "bundle is up to date", "versions agree". |
 | `.github/workflows/release.yml` | On a `v*` tag: tests, build, tag = version check, GitHub release with `dist/pulse-cards.js` and the changelog section. |
 
@@ -145,6 +147,7 @@ The harnesses stub Home Assistant's elements, so they prove layout and logic, no
 - **Releases:** you prepare the version and the changelog (above); Timos commits and pushes the `vX.Y.Z` tag; `release.yml` publishes. You never tag or push.
 - **CI** (`validate.yml`): HACS validation, then typecheck, tests, build, "bundle is up to date" and "versions agree". Anything that fails there fails his push, so run the same checks locally.
 - **No secrets, no private data:** never put real entity IDs, names, tokens, addresses or photos from a real home in the repo, a harness, a test or a screenshot. Use invented ones.
+- **The README's "How these cards are made" section is a promise to users:** AI agents write code, Timos reviews and commits every change, and every release runs in his own Home Assistant before it is tagged. Keep it true; never weaken or remove it without him.
 - **Screenshots** in `cards/<card>/docs/` come from the card's harness. Refresh them only when the look changes and he wants it. The root README shows them through `raw.githubusercontent.com` URLs so that HACS can render them too.
 - **Language:** comments and docs are plain, direct English. Interface text is English and Greek, in each card's `src/localize.ts`.
 - **Dependencies:** `lit` only at runtime. Ask before adding anything, dev dependencies included; they are shared by every card now.

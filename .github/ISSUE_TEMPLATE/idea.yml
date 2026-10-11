@@ -1,0 +1,23 @@
+name: An idea
+description: Something a card could do for your home, or a new card.
+labels: [idea]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What do you want to see or do, and why?
+      description: Describe the moment in your day it would help with. The need matters more than the exact solution.
+    validations:
+      required: true
+  - type: dropdown
+    id: card
+    attributes:
+      label: Which card?
+      options:
+        - Area Pulse Card
+        - Home Pulse Card
+        - Home Pulse Shortcuts
+        - Tile Pulse Card
+        - Scene Pulse Card
+        - A new card
+        - Not sure

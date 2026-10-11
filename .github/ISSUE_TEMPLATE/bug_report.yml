@@ -1,0 +1,63 @@
+name: Something doesn't work
+description: A card shows something wrong, misses something, or doesn't load.
+labels: [bug]
+body:
+  - type: dropdown
+    id: card
+    attributes:
+      label: Which card?
+      options:
+        - Area Pulse Card
+        - Home Pulse Card
+        - Home Pulse Shortcuts
+        - Tile Pulse Card
+        - Scene Pulse Card
+        - All of them / the bundle doesn't load
+        - Another card
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens, and what did you expect?
+      description: A screenshot helps a lot. Please hide anything private (names, addresses) first.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: The card's YAML
+      description: From the card editor → "Show code editor". Rename entities if you like, but keep their domain (light., sensor., …).
+      render: yaml
+  - type: input
+    id: version
+    attributes:
+      label: Pulse Cards version
+      description: The browser console shows it as PULSE-CARDS vX.Y.Z, or see HACS.
+    validations:
+      required: true
+  - type: input
+    id: ha
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.10.0"
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Browser or app
+      placeholder: "Chrome 141 on Windows / Companion app on Android"
+  - type: dropdown
+    id: theme
+    attributes:
+      label: Theme
+      options:
+        - Home Assistant default
+        - Pulse, Pulse Glass or Pulse Tonal
+        - Another theme
+  - type: textarea
+    id: console
+    attributes:
+      label: Errors in the browser console (if any)
+      render: text
