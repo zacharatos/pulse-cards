@@ -44,12 +44,22 @@ Don't write a commit message unless he asks for one. If he does, offer it as a s
 
 ## The repository in one minute
 
-- **What it is:** Pulse Cards, the Lovelace cards of our Home Assistant in one HACS repository (category *Dashboard*) and one bundle, `dist/pulse-cards.js`. It holds five elements: `area-pulse-card`, `home-pulse-card`, `home-pulse-shortcuts-card`, `tile-pulse-card`, `scene-pulse-card` (plus their `-editor` elements).
+- **What it is:** Pulse Cards, the Lovelace cards of our Home Assistant in one HACS repository (category *Dashboard*) and one bundle, `dist/pulse-cards.js`. Today it holds `area-pulse-card`, `home-pulse-card`, `home-pulse-shortcuts-card`, `tile-pulse-card` and `scene-pulse-card` (plus their `-editor` elements), and **it is the home of every Pulse card to come** (next section).
 - **Why one repository:** one version, one changelog, one CI and one download for cards that are designed as one family, so they stay compatible with each other. Until 2026-10-11 every card had its own repository; `scripts/import-history.sh` brings their history into this one under `cards/<card>/`. Decision record: `docs/decisions/0002-one-repository-for-the-cards.md` in the home base.
-- **What is not here, on purpose:** Stock Pulse and Flow Pulse are integrations with a card inside them, and Pulse Theme is a theme. HACS allows one category per repository and one integration per integration repository, so they keep their own repositories. They are siblings all the same: the cards read the theme's `--pulse-*` tokens first.
+- **What is not here, on purpose:** integrations and themes (next section).
 - **Stack:** TypeScript (strict) + Lit 3, bundled by rollup + terser into one ES module. `lit` is the only runtime dependency. Home Assistant types are declared locally in each card's `src/types.ts` (no `custom-card-helpers`).
 - **Repo:** `zacharatos/pulse-cards`, local folder `C:\Users\Timos\Documents\Projects\pulse-cards`. Minimum Home Assistant 2025.7.0 (`hacs.json`).
 - **Maintainer:** Timos. He tests in his own Home Assistant. English is the working language; every card is localised in English and Greek.
+
+## Every Pulse card lives here
+
+**This is a hard rule, for Timos and for every agent: every new Pulse card goes into this repository, unless it is an integration.** More cards are coming, and none of them gets a repository of its own.
+
+- **A card → here,** as `cards/<name>/`, in the one bundle, with the one version (see "Adding a card to the bundle"). This holds whatever the card does and however big it gets, and also for a card that only *reads* entities an integration creates.
+- **An integration → its own repository,** with its card inside it, like Stock Pulse and Flow Pulse. It is an integration when it has to keep state, run logic with no dashboard open, or expose entities, actions or events (home base `docs/new-component.md`, step 0.3). HACS allows one integration per repository, and an integration's card is served by the integration itself.
+- **A theme → its own repository** (Pulse Theme): a different HACS category.
+- **Never suggest or scaffold a separate repository for a card.** If a request seems to need one (a card someone wants to install without the others, say), stop and ask Timos instead.
+- **If an integration's card stops needing its integration** (its logic moves into HA or into the card), it can move here; that is a decision for Timos, with its own release in both repositories.
 
 ## Code map
 
@@ -102,7 +112,7 @@ Pulse Cards has **one version** for the bundle, and every change you hand off co
 
 ## Commit messages (only when he asks for one)
 
-Suggest [Conventional Commits](https://www.conventionalcommits.org) with the card as the scope, so `git log` reads per card: `area`, `home`, `shortcuts`, `tile`, `scene`; no scope for repo-wide changes (`build`, `ci`, the bundle). Examples: `feat(tile): long-press a button for more-info`, `fix(area): climate reading when the sensor is unavailable`, `ci: check the changelog on release`. One card per commit where possible. Never run the commit yourself.
+Suggest [Conventional Commits](https://www.conventionalcommits.org) with the card as the scope, so `git log` reads per card: `area`, `home`, `shortcuts`, `tile`, `scene`, and a new short scope for each new card; no scope for repo-wide changes (`build`, `ci`, the bundle). Examples: `feat(tile): long-press a button for more-info`, `fix(area): climate reading when the sensor is unavailable`, `ci: check the changelog on release`. One card per commit where possible. Never run the commit yourself.
 
 ## How the cards live together
 
@@ -112,6 +122,8 @@ Suggest [Conventional Commits](https://www.conventionalcommits.org) with the car
 - **Consistency across the family** (chip shapes, radii, motion, colour rules, wording) is checked against the home base's `.claude/rules/design-language.md` and `cards.md`, and against the siblings here.
 
 ## Adding a card to the bundle
+
+This is the normal way the repository grows: every new Pulse card that isn't an integration is added like this.
 
 1. Agree it with Timos first (home base `docs/new-component.md`: the need, native first, the registry).
 2. Create `cards/<name>/` with the same shape as the others (copy the skeleton of `cards/home-pulse-card/`, not its features): `src/<name>.ts` defines the element(s) behind a `customElements.get` guard and pushes to `window.customCards`; no `VERSION` and no console banner of its own.
@@ -124,7 +136,7 @@ Suggest [Conventional Commits](https://www.conventionalcommits.org) with the car
 The harnesses stub Home Assistant's elements, so they prove layout and logic, not integration. Besides each card's own list:
 
 - HACS installs the repository and registers the one resource, `/hacsfiles/pulse-cards/pulse-cards.js`.
-- With the old per-card resources removed, the console shows only `PULSE-CARDS vX.Y.Z`; the card picker lists all five cards with their previews.
+- With the old per-card resources removed, the console shows only `PULSE-CARDS vX.Y.Z`; the card picker lists every card in the bundle with its preview.
 - Existing dashboards render unchanged, and each card's visual editor opens and saves the same YAML.
 - The companion app picks up the new bundle after its frontend cache is reset.
 

@@ -2,7 +2,9 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
 
-A calm family of dashboard cards for Home Assistant, in one download. They share one look (the same radii, chip shapes, motion and colour rules), read the [Pulse theme](https://github.com/zacharatos/pulse-theme)'s `--pulse-*` tokens first and fall back to your own theme, and sit comfortably next to Home Assistant's native cards.
+A calm family of dashboard cards for Home Assistant, in one download. **Every Pulse card lives here, today's and every one still to come**; only the Pulse integrations, which bring their own card, have repositories of their own. They share one look (the same radii, chip shapes, motion and colour rules), read the [Pulse theme](https://github.com/zacharatos/pulse-theme)'s `--pulse-*` tokens first and fall back to your own theme, and sit comfortably next to Home Assistant's native cards.
+
+The cards so far (more are on the way, and each new one arrives in this same download):
 
 | Card | Type | What it is for |
 | :- | :- | :- |
@@ -18,14 +20,22 @@ A calm family of dashboard cards for Home Assistant, in one download. They share
 | **Tile Pulse** | **Scene Pulse** |
 | ![Tile Pulse Card](https://raw.githubusercontent.com/zacharatos/pulse-cards/main/cards/tile-pulse-card/docs/light.png) | ![Scene Pulse Card](https://raw.githubusercontent.com/zacharatos/pulse-cards/main/cards/scene-pulse-card/docs/light.png) |
 
-The family also has two integrations that bring their own card, [Stock Pulse](https://github.com/zacharatos/stock-pulse-integration) (household inventory and shopping list) and [Flow Pulse](https://github.com/zacharatos/flow-pulse) (automations), and the [Pulse theme](https://github.com/zacharatos/pulse-theme). HACS keeps integrations and themes in repositories of their own, so they are installed separately.
+## One home for every Pulse card
+
+This repository is where the Pulse cards live, and it is meant to grow. The rule is simple:
+
+- **A card is a card → it comes here.** Every new Pulse card, whatever it does, is added to this repository as a new folder under `cards/` and ships in the same `pulse-cards.js`. Install Pulse Cards once and each new card turns up in your card picker with the next update; there is no new repository to add, no new resource, nothing to configure.
+- **An integration → its own repository.** When a component has to keep state, run on its own with no dashboard open, or create entities, actions or events, it is an integration, and HACS allows only one integration per repository. Its card comes inside it. Today that is [Stock Pulse](https://github.com/zacharatos/stock-pulse-integration) (household inventory and shopping list) and [Flow Pulse](https://github.com/zacharatos/flow-pulse) (automations).
+- **The theme** is a HACS theme, so [Pulse Theme](https://github.com/zacharatos/pulse-theme) has its own repository too. Every card here reads its `--pulse-*` tokens first.
+
+New cards are listed in [CHANGELOG.md](CHANGELOG.md) under the release that brings them. A new card is a minor release: it adds something and changes nothing you already use.
 
 ## Installation
 
 ### HACS (custom repository)
 
 1. HACS → ⋮ → **Custom repositories** → add `https://github.com/zacharatos/pulse-cards`, type **Dashboard**.
-2. Search for **Pulse Cards** → **Download**. HACS adds one dashboard resource, `/hacsfiles/pulse-cards/pulse-cards.js`, which holds every card.
+2. Search for **Pulse Cards** → **Download**. HACS adds one dashboard resource, `/hacsfiles/pulse-cards/pulse-cards.js`, which holds every card, including the ones added later.
 3. Reload the browser (clear the cache if the cards don't show up in the card picker). The browser console shows `PULSE-CARDS vX.Y.Z`.
 
 ### Manual
@@ -58,7 +68,7 @@ All of them also have a visual editor.
 
 ```
 pulse-cards/
-├─ cards/<card>/          one folder per card: src/, test/ (unit tests + harness), docs/ (screenshots), README.md, AGENTS.md
+├─ cards/<card>/          one folder per card (a new card = a new folder): src/, test/ (unit tests + harness), docs/ (screenshots), README.md, AGENTS.md
 ├─ src/index.ts           the bundle's entry: imports every card, prints the one console banner
 ├─ src/version.ts         the one version
 ├─ dist/pulse-cards.js    the built bundle (committed: HACS serves it)
