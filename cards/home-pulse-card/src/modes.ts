@@ -19,13 +19,15 @@ const domainOf = (id: string) => id.split(".")[0];
 const ICON_GUESSES: [RegExp, string][] = [
   [/away|leave|εκτός|έξω|απουσ/i, "mdi:home-export-outline"],
   [/night|sleep|bed|νύχτ|ύπνο|βράδ/i, "mdi:weather-night"],
-  [/movie|cinema|film|tv|ταινί|σινεμ/i, "mdi:movie-open-outline"],
+  [/movie|cinema|film|theat(er|re)|tv|ταινί|σινεμ|θέατρ/i, "mdi:movie-open-outline"],
   [/guest|visit|επισκ|καλεσμ/i, "mdi:account-group-outline"],
   [/vacation|holiday|travel|διακοπ|ταξίδ/i, "mdi:airplane"],
   [/morning|wake|πρωί|ξύπνη/i, "mdi:weather-sunset-up"],
   [/work|office|focus|δουλει|γραφεί/i, "mdi:briefcase-outline"],
   [/party|πάρτ/i, "mdi:party-popper"],
-  [/dinner|eat|φαγητ|δείπν/i, "mdi:silverware-fork-knife"],
+  [/cook|μαγείρ/i, "mdi:chef-hat"],
+  [/read|διάβασ/i, "mdi:book-open-page-variant-outline"],
+  [/dinner|\beat(ing)?\b|φαγητ|δείπν/i, "mdi:silverware-fork-knife"],
   [/home|σπίτι|normal|κανονικ|day|ημέρα/i, "mdi:home-outline"],
 ];
 

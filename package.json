@@ -1,6 +1,6 @@
 {
   "name": "pulse-cards",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Every Pulse Lovelace card for Home Assistant in one HACS bundle: Area Pulse, Home Pulse, Home Pulse Shortcuts, Tile Pulse, Scene Pulse and the cards still to come.",
   "main": "dist/pulse-cards.js",
@@ -11,14 +11,24 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --import ./test/register.mjs --test \"cards/*/test/**/*.test.mjs\""
   },
-  "keywords": ["home-assistant", "hacs", "lovelace", "custom-card", "dashboard", "area", "overview", "tile", "scenes"],
+  "keywords": [
+    "home-assistant",
+    "hacs",
+    "lovelace",
+    "custom-card",
+    "dashboard",
+    "area",
+    "overview",
+    "tile",
+    "scenes"
+  ],
   "license": "MIT",
   "dependencies": {
     "lit": "^3.2.0"
   },
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^15.3.0",
-    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-terser": "^1.0.0",
     "@rollup/plugin-typescript": "^12.1.0",
     "rollup": "^4.24.0",
     "tslib": "^2.8.0",

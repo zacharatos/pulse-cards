@@ -2,7 +2,15 @@ import { LitElement, html, css, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
 import type { AreaPulseCardConfig, HomeAssistant, QuickActionConfig } from "./types";
-import { DEFAULT_ALERT_CLASSES, DEFAULT_GROUPS, DEFAULT_MAX_CHIPS, DEFAULT_TOP_GROUPS, SENSOR_CLASS_OPTIONS } from "./discovery";
+import {
+  DEFAULT_ALERT_CLASSES,
+  DEFAULT_GROUPS,
+  DEFAULT_MAX_CHIPS,
+  DEFAULT_TOP_GROUPS,
+  MAIN_LIGHT_DOMAINS,
+  SENSOR_CLASS_OPTIONS,
+} from "./discovery";
+import { modeEntityOf } from "./modes";
 import { PRESETS } from "./presets";
 import { toList } from "./labels";
 import { localize } from "./localize";
@@ -93,7 +101,7 @@ export class AreaPulseCardEditor extends LitElement {
       { name: "show_picture", selector: { boolean: {} } },
       { name: "room_popup", selector: { boolean: {} } },
       { name: "link_main_light", selector: { boolean: {} } },
-      { name: "main_light", selector: { entity: { filter: { domain: "light" } } } },
+      { name: "main_light", selector: { entity: { filter: MAIN_LIGHT_DOMAINS.map((domain) => ({ domain })) } } },
       {
         type: "expandable",
         name: "",
@@ -135,10 +143,26 @@ export class AreaPulseCardEditor extends LitElement {
               select: {
                 multiple: true,
                 mode: "list",
-                options: SENSOR_CLASS_OPTIONS.map((c) => ({ value: c, label: c.replace(/_/g, " ") })),
+                options: SENSOR_CLASS_OPTIONS.map((c) => ({ value: c, label: t(`sc_${c}`) })),
               },
             },
           },
+          { name: "sensor_entities", selector: { entity: { multiple: true, filter: { domain: "sensor" } } } },
+        ],
+      },
+      {
+        type: "expandable",
+        name: "",
+        title: t("ed_section_modes"),
+        icon: "mdi:home-switch-outline",
+        flatten: true,
+        schema: [
+          { name: "mode_entity", selector: { entity: { filter: [{ domain: "input_select" }, { domain: "select" }] } } },
+          {
+            name: "mode_default",
+            selector: { select: { mode: "dropdown", custom_value: true, options: this._modeOptions() } },
+          },
+          { name: "show_mode_names", selector: { boolean: {} } },
         ],
       },
       {
@@ -247,6 +271,13 @@ export class AreaPulseCardEditor extends LitElement {
     ];
   }
 
+  /** The mode selector's options, for "back to normal". */
+  private _modeOptions(): { value: string; label: string }[] {
+    const me = this._config ? modeEntityOf(this._config) : undefined;
+    const options = (me ? this.hass?.states[me]?.attributes.options : undefined) as string[] | undefined;
+    return (Array.isArray(options) ? options : []).map((o) => ({ value: o, label: o }));
+  }
+
   private _actionSchema(a: QuickActionConfig): Schema[] {
     const t = this._t;
     return [
@@ -295,6 +326,10 @@ export class AreaPulseCardEditor extends LitElement {
       temperature_entity: "ed_temperature_entity",
       humidity_entity: "ed_humidity_entity",
       sensor_classes: "ed_sensor_classes",
+      sensor_entities: "ed_sensor_entities",
+      mode_entity: "ed_mode_entity",
+      mode_default: "ed_mode_default",
+      show_mode_names: "ed_show_mode_names",
       comfort_temp_min: "ed_comfort_temp_min",
       comfort_temp_max: "ed_comfort_temp_max",
       comfort_hum_min: "ed_comfort_hum_min",
@@ -341,6 +376,7 @@ export class AreaPulseCardEditor extends LitElement {
       max_chips: DEFAULT_MAX_CHIPS,
       battery_threshold: 20,
       link_main_light: true,
+      show_mode_names: true,
       top_groups: DEFAULT_TOP_GROUPS,
       ...c,
       label_include: toList(c.label_filter?.include),
@@ -401,6 +437,7 @@ export class AreaPulseCardEditor extends LitElement {
     if ((next as any).max_chips === DEFAULT_MAX_CHIPS) delete (next as any).max_chips;
     if ((next as any).battery_threshold === 20) delete (next as any).battery_threshold;
     if ((next as any).link_main_light === true) delete (next as any).link_main_light;
+    if ((next as any).show_mode_names === true) delete (next as any).show_mode_names;
     this._commit(next);
   }
 

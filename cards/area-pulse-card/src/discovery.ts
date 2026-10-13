@@ -29,11 +29,26 @@ export const DEFAULT_GROUPS: GroupId[] = [
 /** Chips shown in the first row: what is open / moving in the room. Everything else goes in row two. */
 export const DEFAULT_TOP_GROUPS: GroupId[] = ["motion", "doors", "windows"];
 
+/** Air-quality device classes Home Assistant has, in the order the editor lists them. */
+export const AIR_QUALITY_CLASSES = [
+  "aqi",
+  "carbon_dioxide",
+  "pm1",
+  "pm25",
+  "pm10",
+  "volatile_organic_compounds",
+  "volatile_organic_compounds_parts",
+  "carbon_monoxide",
+  "nitrogen_dioxide",
+  "nitrogen_monoxide",
+  "nitrous_oxide",
+  "ozone",
+  "sulphur_dioxide",
+];
+
 export const SENSOR_CLASS_OPTIONS = [
   "illuminance",
-  "carbon_dioxide",
-  "pm25",
-  "volatile_organic_compounds",
+  ...AIR_QUALITY_CLASSES,
   "pressure",
   "power",
   "energy",
@@ -216,6 +231,22 @@ export function reading(
   return { deviceClass, value, unit, entities: same.map((s) => s.entity_id) };
 }
 
+/**
+ * Readings of the sensors named in `sensor_entities`, in the given order: any numeric sensor, with or without a
+ * device class (a radon level, a purifier's own index). Named entities skip discovery and the label filter.
+ */
+export function entityReadings(hass: HomeAssistant, ids: string[] = []): Reading[] {
+  const out: Reading[] = [];
+  for (const id of ids) {
+    const s = hass.states[id];
+    if (!s) continue;
+    const value = Number(s.state);
+    if (!isAvailable(s) || s.state === "" || Number.isNaN(value)) continue;
+    out.push({ deviceClass: dc(s) ?? "", value, unit: String(s.attributes.unit_of_measurement ?? ""), entities: [id] });
+  }
+  return out;
+}
+
 /** Comfort band evaluation for temperature/humidity colouring. */
 export function comfortState(
   value: number,
@@ -278,12 +309,15 @@ export interface ChipCandidate {
 }
 
 /**
- * Out-of-range level of a `sensor_classes` reading, shown in the climate block: CO₂ from 1000 ppm (warn) and
- * 1500 ppm (bad), PM2.5 from 12 and 35 µg/m³. Readings without an agreed range are never coloured.
+ * Out-of-range level of a reading in the climate block: CO₂ from 1000 ppm (warn) and 1500 ppm (bad), PM2.5 from
+ * 12 and 35 µg/m³, PM10 from 55 and 155 µg/m³, and the air quality index from 101 and 151 (the US AQI bands
+ * "unhealthy for sensitive groups" and "unhealthy"). Readings without an agreed range are never coloured.
  */
 export function readingSeverity(r: Pick<Reading, "deviceClass" | "value">): "" | "warn" | "bad" {
   if (r.deviceClass === "carbon_dioxide") return r.value >= 1500 ? "bad" : r.value >= 1000 ? "warn" : "";
   if (r.deviceClass === "pm25") return r.value >= 35 ? "bad" : r.value >= 12 ? "warn" : "";
+  if (r.deviceClass === "pm10") return r.value >= 155 ? "bad" : r.value >= 55 ? "warn" : "";
+  if (r.deviceClass === "aqi") return r.value >= 151 ? "bad" : r.value >= 101 ? "warn" : "";
   return "";
 }
 
@@ -319,7 +353,15 @@ export function watchedEntities(
   index: AreaIndex
 ): Set<string> {
   const set = new Set(index.withDiagnostic);
-  for (const e of [config.temperature_entity, config.humidity_entity, config.main_light, ...(config.presence_entities ?? [])]) {
+  for (const e of [
+    config.temperature_entity,
+    config.humidity_entity,
+    config.main_light,
+    config.mode_entity,
+    ...(config.presence_entities ?? []),
+    ...(config.sensor_entities ?? []),
+    ...(config.modes ?? []).map((m) => m?.entity),
+  ]) {
     if (e) set.add(e);
   }
   for (const a of config.actions ?? []) if (a.entity) set.add(a.entity);
@@ -328,9 +370,13 @@ export function watchedEntities(
 
 const MAIN_LIGHT_HINT = /ceiling|main|overhead|central|chandelier|κεντρικ|ταβάν|οροφ/i;
 
+/** Domains `main_light` accepts: a light, or the switch of a light on a relay. */
+export const MAIN_LIGHT_DOMAINS = ["light", "switch", "input_boolean"];
+
 /**
  * The light the area icon toggles: explicit config > a light whose name suggests it is the main one >
- * the only light in the area. Returns undefined when the choice would be a guess.
+ * the only light in the area. Returns undefined when the choice would be a guess. An explicit `main_light` may
+ * also be a switch or input_boolean (lights on a relay); discovery only ever picks lights.
  */
 export function findMainLight(
   hass: HomeAssistant,
@@ -346,16 +392,47 @@ export function findMainLight(
   );
 }
 
-/** Colour a light is emitting, as [r, g, b], or undefined when it is off or reports no colour. */
+/** A finite number from an attribute value (template lights can report strings, `None` or nothing). */
+function num(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === "" || typeof v === "boolean") return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** The first `n` entries of a list attribute as finite numbers, or undefined if any of them is not one. */
+function nums(v: unknown, n: number): number[] | undefined {
+  if (!Array.isArray(v) || v.length < n) return undefined;
+  const out = v.slice(0, n).map(num);
+  return out.every((x) => x !== undefined) ? (out as number[]) : undefined;
+}
+
+/**
+ * Colour a light is emitting, as [r, g, b], or undefined when it is off or reports no usable colour (the card then
+ * glows in the theme's "on" colour). Every attribute is checked, because a template light can report a colour
+ * attribute with `None` or text in it, and one bad value would otherwise make the whole glow invalid CSS.
+ * Order: RGB (also the first three of RGBW/RGBWW), colour temperature (kelvin, then mireds), hue/saturation, xy.
+ */
 export function lightColor(s?: HassEntity): [number, number, number] | undefined {
   if (!s || s.state !== "on") return undefined;
-  const rgb = s.attributes.rgb_color as number[] | undefined;
-  if (Array.isArray(rgb) && rgb.length === 3) return [rgb[0], rgb[1], rgb[2]];
-  const k = s.attributes.color_temp_kelvin as number | undefined;
-  if (typeof k === "number") return kelvinToRgb(k);
-  const hs = s.attributes.hs_color as number[] | undefined;
-  if (Array.isArray(hs) && hs.length === 2) return hsToRgb(hs[0], hs[1]);
+  const a = s.attributes;
+  const rgb = nums(a.rgb_color, 3) ?? nums(a.rgbw_color, 3) ?? nums(a.rgbww_color, 3);
+  if (rgb) return [clamp(rgb[0]), clamp(rgb[1]), clamp(rgb[2])];
+  const kelvin = num(a.color_temp_kelvin);
+  if (kelvin !== undefined && kelvin > 0) return kelvinToRgb(kelvin);
+  const mireds = num(a.color_temp);
+  if (mireds !== undefined && mireds > 0) return kelvinToRgb(1_000_000 / mireds);
+  const hs = nums(a.hs_color, 2);
+  if (hs) return hsToRgb(hs[0], hs[1]);
+  const xy = nums(a.xy_color, 2);
+  if (xy) return xyToRgb(xy[0], xy[1]);
   return undefined;
+}
+
+/** How strongly the glow shows, from the light's brightness (0–255); a light without one glows at full strength. */
+export function glowAlpha(s?: HassEntity): number {
+  const b = num(s?.attributes.brightness);
+  const level = b === undefined ? 1 : Math.min(1, Math.max(0, b / 255));
+  return 0.1 + 0.12 * level;
 }
 
 function clamp(v: number) {
@@ -378,4 +455,19 @@ function hsToRgb(h: number, sPct: number): [number, number, number] {
     return 255 * (1 - s * Math.max(0, Math.min(k, 4 - k, 1)));
   };
   return [clamp(f(5)), clamp(f(3)), clamp(f(1))];
+}
+
+/** CIE xy at full brightness to sRGB, scaled so the brightest channel is 255 (a hue, not a brightness). */
+function xyToRgb(x: number, y: number): [number, number, number] {
+  if (y <= 0) return [255, 255, 255];
+  const X = x / y;
+  const Z = (1 - x - y) / y;
+  const lin = [
+    X * 3.2406 - 1.5372 - Z * 0.4986,
+    -X * 0.9689 + 1.8758 + Z * 0.0415,
+    X * 0.0557 - 0.204 + Z * 1.057,
+  ].map((v) => Math.max(0, v));
+  const gamma = lin.map((v) => (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055));
+  const max = Math.max(...gamma, 1e-6);
+  return [clamp((gamma[0] / max) * 255), clamp((gamma[1] / max) * 255), clamp((gamma[2] / max) * 255)];
 }

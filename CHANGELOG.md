@@ -4,6 +4,20 @@ Every release of Pulse Cards, newest first. The bundle has one version; the chan
 
 Sections inside a version, only those that apply: **All cards**, **Area Pulse Card**, **Home Pulse Card**, **Home Pulse Shortcuts**, **Tile Pulse Card**, **Scene Pulse Card**, and one for each new card as it arrives (a new card's first entry is under *Added* in the release that brings it). Inside a section: *Added*, *Changed*, *Fixed*, *Removed*, and **Breaking** first when there is something the user has to act on.
 
+## [1.2.0] - 2026-10-13
+
+### Area Pulse Card
+
+- **Added:** more air-quality readings (AQI, PM1, PM10, CO, NO₂, ozone and the rest of Home Assistant's air-quality classes) in *Extra sensor readings*. AQI and PM10 turn orange or red when out of range, like CO₂ and PM2.5. ([#1](https://github.com/zacharatos/pulse-cards/issues/1))
+- **Added:** `sensor_entities`: a reading by entity, for sensors with no device class (a radon level). In the editor under *Climate & sensors*. ([#1](https://github.com/zacharatos/pulse-cards/issues/1))
+- **Fixed:** template lights tint the card: a light whose colour or brightness attributes hold `None` or text no longer kills the glow; it glows in its colour when it reports one, otherwise in the theme's "on" colour. Lights reporting only xy or mireds now tint too. ([#2](https://github.com/zacharatos/pulse-cards/issues/2))
+- **Added:** a switch can be the main light, for lights on a relay: `main_light` takes a `switch` or `input_boolean`, which glows in the theme's "on" colour and is toggled by the area icon. ([#2](https://github.com/zacharatos/pulse-cards/issues/2))
+- **Added:** room modes on the area card, like the house modes on Home Pulse: `mode_entity` (an `input_select` or `select`), `show_mode_names`, `mode_default`, and `modes` in YAML. Off unless set. In the editor under *Room modes*. ([#3](https://github.com/zacharatos/pulse-cards/issues/3))
+
+### Home Pulse Card
+
+- **Fixed:** a mode called "Theater" got the dinner icon (it contains "eat"); it now gets the movie icon. Modes about cooking and reading get their own icons.
+
 ## [1.1.0] - 2026-10-11
 
 ### Home Pulse Card
@@ -52,5 +66,6 @@ Sections inside a version, only those that apply: **All cards**, **Area Pulse Ca
 
 - Same as `scene-pulse-card` v0.1.0, the last release of its own repository.
 
+[1.2.0]: https://github.com/zacharatos/pulse-cards/releases/tag/v1.2.0
 [1.1.0]: https://github.com/zacharatos/pulse-cards/releases/tag/v1.1.0
 [1.0.0]: https://github.com/zacharatos/pulse-cards/releases/tag/v1.0.0

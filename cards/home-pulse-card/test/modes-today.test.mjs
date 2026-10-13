@@ -17,6 +17,8 @@ test("mode icons are guessed from English and Greek names", () => {
   assert.equal(guessModeIcon("Workout"), "mdi:briefcase-outline");
   assert.equal(guessModeIcon("Home"), "mdi:home-outline");
   assert.equal(guessModeIcon("Zen"), "mdi:circle-outline");
+  assert.equal(guessModeIcon("Theater"), "mdi:movie-open-outline"); // not "eat"
+  assert.equal(guessModeIcon("Cooking"), "mdi:chef-hat");
 });
 
 test("only house_mode/home_mode selects are discovered", () => {

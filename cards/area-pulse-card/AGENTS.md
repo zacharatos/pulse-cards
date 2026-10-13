@@ -57,6 +57,7 @@ Don't write a commit message unless he asks for one. If he does, offer it as a s
 | `src/discovery.ts` | Pure logic that turns `hass` into card data. `indexArea` (which entities belong to the area, including device to area inheritance, plus the label filter), `buildGroups`/`DEFAULT_GROUPS`/`DEFAULT_TOP_GROUPS`, `pickChips` (which chips go on the face), `reading` (median/sum aggregation), `readingSeverity`, `comfortState`, `watchedEntities` (which state changes cause a re-render), `findMainLight`, `lightColor`. |
 | `src/room.ts` | Pure layout logic for the room popup: `buildRoom` (which sections, in which order, with which entities), `roomLabels` (short names, device caption on duplicates), `matchesQuery`, `isActiveState`. |
 | `src/labels.ts` | Pure label-filter logic (`resolveLabelFilter`, `passesLabelFilter`) and the cached `config/label_registry/list` call. |
+| `src/modes.ts` | Pure logic for the room modes row (`resolveModes`, `defaultMode`, `guessModeIcon`). A copy of Home Pulse Card's `modes.ts` (a card never imports another card's `src/`): keep the keys, behaviour and icon guesses identical in both, and change them together. The one difference: a room's mode selector is never guessed, only `mode_entity` / `modes` turn the row on. |
 | `src/presets.ts` | Quick-action presets (`lights_toggle`, `vacuum_area`, ...) resolved to a name, icon, state and Home Assistant action. |
 | `src/action-handler.ts` | Tap / hold / double-tap handling that hands off to Home Assistant's own `hass-action` event. |
 | `src/editor.ts` | The visual editor, built on `ha-form` selectors. Schema functions, plus `_formData` / `_mainChanged` which map form values to and from the YAML config. |
@@ -81,7 +82,7 @@ npm run build          # rewrites dist/pulse-cards.js
 ```
 
 - Always rebuild `dist/` after changing anything in `src/`. Leave it modified in the working tree (never `git add` it): CI runs `git diff --exit-code dist/` after building and fails if the committed bundle is stale.
-- For anything visual, look at it. Serve the parent `Projects` folder (`python3 -m http.server 8765`, so the sibling `pulse-theme` repo is reachable for `?theme=`) and open `http://localhost:8765/pulse-cards/cards/area-pulse-card/test/harness.html` (query options: `?dark=1`, `?lang=el`, `?helpers=1` for the native-tile popup path, `?rgb=255,120,40` for the main light colour, `?theme=pulse|glass|tonal` applies a [Pulse theme](https://github.com/zacharatos/pulse-theme); the "Den" card is the busy-room scenario for the room popup, tap its header). Add a scenario to the harness when you add a visible feature. Check light and dark, and the browser console.
+- For anything visual, look at it. Serve the parent `Projects` folder (`python3 -m http.server 8765`, so the sibling `pulse-theme` repo is reachable for `?theme=`) and open `http://localhost:8765/pulse-cards/cards/area-pulse-card/test/harness.html` (query options: `?dark=1`, `?lang=el`, `?helpers=1` for the native-tile popup path, `?rgb=255,120,40` for the main light colour, `?tpl=rgb` gives the Study's template light a colour (without it, its colour attributes are broken), `?theme=pulse|glass|tonal` applies a [Pulse theme](https://github.com/zacharatos/pulse-theme); the "Den" card is the busy-room scenario for the room popup, tap its header). Add a scenario to the harness when you add a visible feature. Check light and dark, and the browser console.
 - The harness stubs Home Assistant's elements, so it proves layout and logic, not integration. See the last section.
 
 ## How we work on this card
@@ -152,6 +153,7 @@ Ideas the maintainer and users have discussed or that fit the card's direction. 
 - **Per-group label filters**, e.g. one label for the lights chip and another for the climate readings.
 - **Room popup extras**: a history graph for the temperature, cameras and scenes as sections, section jump chips on phones, per-section presets.
 - **Sparklines** for temperature/humidity trends, and an **air-quality score** combining CO₂, PM2.5 and VOC.
+- **Room modes in the editor as a list** (rename, icons, colours), like Home Pulse's mode list; today `modes` is YAML only.
 - **Energy chip** (power now, energy today) using the area's power and energy sensors.
 - **Occupancy nudges**: "lights on, room empty for 20 min", with a one-tap fix.
 - **Floor mode** or a multi-area strip built from the same index logic.

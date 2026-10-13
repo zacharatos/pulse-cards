@@ -396,6 +396,66 @@ export const cardStyles = css`
   }
   .actions.dense .action .label { max-width: 100%; }
 
+  /* Room modes: a segmented row, drawn like Home Pulse's house modes. */
+  .modes {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: calc(var(--apc-control-radius) + 4px);
+    background: var(--apc-neutral-bg);
+  }
+  .mode {
+    --c: var(--apc-accent);
+    flex: 1 1 0;
+    min-width: 0;
+    height: 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 4px;
+    border: none;
+    border-radius: var(--apc-control-radius);
+    background: none;
+    color: var(--secondary-text-color);
+    font: inherit;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: background-color var(--apc-motion-slow) var(--apc-ease), color var(--apc-motion-slow) var(--apc-ease),
+      transform var(--apc-motion-fast) var(--apc-ease);
+    --mdc-icon-size: 20px;
+  }
+  .mode:hover { background: var(--apc-neutral-bg-hover); }
+  .mode:active { transform: scale(0.96); }
+  .mode:focus-visible { outline: 2px solid var(--c); outline-offset: -2px; }
+  /* Like an active tile: a stronger neutral fill and the text colour; the mode's colour stays on the icon. */
+  .mode.active,
+  .mode.active:hover {
+    color: var(--primary-text-color);
+    background: var(--apc-neutral-bg-strong);
+  }
+  .mode.active ha-icon { color: var(--c); }
+  /* Icons only (show_mode_names: false): a lower row with a slightly larger icon. */
+  .mode.icon-only { height: 46px; --mdc-icon-size: 22px; }
+  .mode-name {
+    max-width: 100%;
+    font-size: 11px;
+    line-height: 14px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Wide cards: icon beside the name. */
+  @container (min-width: 480px) {
+    .mode { flex-direction: row; gap: 8px; height: 46px; }
+    .mode-name { font-size: 13px; }
+  }
+
   /* Narrow cards: icon-only actions */
   @container (max-width: 300px) {
     .actions, .actions.dense { grid-template-columns: repeat(auto-fit, minmax(44px, 1fr)); }
@@ -418,6 +478,11 @@ export const cardStyles = css`
   :host([layout="compact"]) .actions.dense { grid-template-columns: repeat(auto-fit, minmax(40px, 1fr)); }
   :host([layout="compact"]) .actions.dense .action { height: 36px; }
   :host([layout="compact"]) .action .label { display: none; }
+  /* Compact keeps the modes on one low row: icons only, the name stays the tooltip. */
+  :host([layout="compact"]) .modes { padding: 3px; gap: 3px; }
+  :host([layout="compact"]) .mode,
+  :host([layout="compact"]) .mode.icon-only { height: 36px; --mdc-icon-size: 20px; }
+  :host([layout="compact"]) .mode-name { display: none; }
 
   .hint {
     display: flex;

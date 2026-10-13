@@ -1,0 +1,125 @@
+// Pure logic for the room modes row: which buttons, which one is active, what a tap does.
+// A copy of Home Pulse Card's house modes (cards/home-pulse-card/src/modes.ts), because a card never imports
+// another card's src/. Keep the two in step: same keys, same behaviour, same icons. The one difference is that
+// a room's mode selector is never guessed: the row is off until `mode_entity` (or `modes`) is set.
+import type { ActionConfig, AreaPulseCardConfig, HassEntity, HomeAssistant, ModeConfig } from "./types";
+
+export interface ResolvedMode {
+  name: string;
+  icon: string;
+  color?: string;
+  active: boolean;
+  /** Tapping this (lit) mode selects `mode_default`: the option it goes back to. */
+  resetTo?: string;
+  entity?: string;
+  tap_action: ActionConfig;
+  hold_action?: ActionConfig;
+}
+
+const domainOf = (id: string) => id.split(".")[0];
+
+/** Icons guessed from the mode name, in English and Greek. First match wins. */
+const ICON_GUESSES: [RegExp, string][] = [
+  [/away|leave|εκτός|έξω|απουσ/i, "mdi:home-export-outline"],
+  [/night|sleep|bed|νύχτ|ύπνο|βράδ/i, "mdi:weather-night"],
+  [/movie|cinema|film|theat(er|re)|tv|ταινί|σινεμ|θέατρ/i, "mdi:movie-open-outline"],
+  [/guest|visit|επισκ|καλεσμ/i, "mdi:account-group-outline"],
+  [/vacation|holiday|travel|διακοπ|ταξίδ/i, "mdi:airplane"],
+  [/morning|wake|πρωί|ξύπνη/i, "mdi:weather-sunset-up"],
+  [/work|office|focus|δουλει|γραφεί/i, "mdi:briefcase-outline"],
+  [/party|πάρτ/i, "mdi:party-popper"],
+  [/cook|μαγείρ/i, "mdi:chef-hat"],
+  [/read|διάβασ/i, "mdi:book-open-page-variant-outline"],
+  [/dinner|\beat(ing)?\b|φαγητ|δείπν/i, "mdi:silverware-fork-knife"],
+  [/home|σπίτι|normal|κανονικ|day|ημέρα/i, "mdi:home-outline"],
+];
+
+export function guessModeIcon(name: string): string {
+  for (const [re, icon] of ICON_GUESSES) if (re.test(name)) return icon;
+  return "mdi:circle-outline";
+}
+
+/** The room's mode selector: only the configured one (`none` or nothing means no selector). */
+export function modeEntityOf(config: AreaPulseCardConfig): string | undefined {
+  return config.mode_entity && config.mode_entity !== "none" ? config.mode_entity : undefined;
+}
+
+function entityAction(entity: string): ActionConfig {
+  const d = domainOf(entity);
+  if (d === "scene" || d === "script") return { action: "perform-action", perform_action: `${d}.turn_on`, target: { entity_id: entity } };
+  if (d === "button" || d === "input_button") return { action: "perform-action", perform_action: `${d}.press`, target: { entity_id: entity } };
+  if (d === "input_select" || d === "select" || d === "automation") return { action: "more-info", entity };
+  return { action: "toggle", entity };
+}
+
+/** Scenes report the time they were last activated as their state. */
+function sceneTime(s?: HassEntity): number {
+  const t = s ? Date.parse(s.state) : NaN;
+  return Number.isNaN(t) ? -Infinity : t;
+}
+
+const selectAction = (entity: string, option: string): ActionConfig => ({
+  action: "perform-action",
+  perform_action: `${domainOf(entity)}.select_option`,
+  target: { entity_id: entity },
+  data: { option },
+});
+
+/**
+ * The "back to normal" option, when it is set and the mode selector really offers it. Without a selector (modes
+ * that are scenes or scripts) there is nothing to go back to.
+ */
+export function defaultMode(hass: HomeAssistant, config: AreaPulseCardConfig, modeEntity: string | undefined): string | undefined {
+  const option = config.mode_default?.trim();
+  if (!option || !modeEntity) return undefined;
+  const options = hass.states[modeEntity]?.attributes.options as string[] | undefined;
+  return !Array.isArray(options) || options.includes(option) ? option : undefined;
+}
+
+export function resolveModes(hass: HomeAssistant, config: AreaPulseCardConfig): ResolvedMode[] {
+  const me = modeEntityOf(config);
+  const meState = me ? hass.states[me] : undefined;
+  const reset = defaultMode(hass, config, me);
+  // A mode just added is still empty: it draws nothing until it says what it does.
+  const listed = (config.modes ?? []).filter((m) => m && (m.name || m.option || m.entity || m.tap_action));
+  // The default option is "no mode": it gets no button of its own unless the list names it.
+  const items: ModeConfig[] = listed.length
+    ? listed
+    : ((meState?.attributes.options as string[] | undefined) ?? []).filter((o) => o !== reset).map((option) => ({ option }));
+  // Among scene buttons, the most recently activated scene is "the current mode".
+  const sceneIds = items.map((m) => m.entity).filter((e): e is string => !!e && domainOf(e) === "scene");
+  const latestScene = sceneIds.reduce<string | undefined>(
+    (best, id) => (sceneTime(hass.states[id]) > sceneTime(best ? hass.states[best] : undefined) ? id : best),
+    undefined
+  );
+
+  return items.map((m) => {
+    const option = m.option ?? (me && !m.entity && !m.tap_action ? m.name : undefined);
+    const entityState = m.entity ? hass.states[m.entity] : undefined;
+    const name = m.name ?? option ?? String(entityState?.attributes.friendly_name ?? m.entity ?? "");
+    const icon = m.icon ?? (entityState?.attributes.icon as string | undefined) ?? guessModeIcon(name);
+    let active = false;
+    if (option !== undefined && meState) active = meState.state === option;
+    else if (m.entity && domainOf(m.entity) === "scene") active = m.entity === latestScene && sceneTime(entityState) > -Infinity;
+    else if (entityState) active = entityState.state === "on";
+
+    // The lit mode, tapped again, goes back to the default option (a toggle, the way people expect it).
+    const resetTo = reset !== undefined && me && option !== undefined && option !== reset && active ? reset : undefined;
+    let tap: ActionConfig = { action: "none" };
+    if (m.tap_action) tap = m.tap_action;
+    else if (resetTo !== undefined) tap = selectAction(me!, resetTo);
+    else if (option !== undefined && me) tap = selectAction(me, option);
+    else if (m.entity) tap = entityAction(m.entity);
+
+    return {
+      name,
+      icon,
+      color: m.color,
+      active,
+      ...(resetTo !== undefined && !m.tap_action ? { resetTo } : {}),
+      entity: m.entity ?? me,
+      tap_action: tap,
+      hold_action: m.hold_action,
+    };
+  });
+}

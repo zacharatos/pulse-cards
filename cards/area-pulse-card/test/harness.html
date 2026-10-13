@@ -154,12 +154,41 @@
   add(st("sensor.den_pm25", "9", { friendly_name: "Xiaomi Air Purifier Environment PM2.5", device_class: "pm25", unit_of_measurement: "µg/m³" }), D);
   for (let i = 0; i < 24; i++) add(st(`sensor.den_node_${i}`, String(i * 3), { friendly_name: `Den Node ${i} Power`, device_class: "power", unit_of_measurement: "W" }), D, { labels: i < 3 ? ["on_card"] : [] });
 
+  // Office: an air-quality room (issue #1). A purifier-like AQI sensor and a monitor-like device with PM, VOC parts,
+  // CO2 and a radon level that has no device class (it can only be added by entity).
+  const O = "office";
+  add(st("sensor.office_temperature", "23.1", { friendly_name: "Office Temperature", device_class: "temperature", unit_of_measurement: "°C" }), O);
+  add(st("sensor.office_humidity", "44", { friendly_name: "Office Humidity", device_class: "humidity", unit_of_measurement: "%" }), O);
+  add(st("sensor.office_purifier_aqi", "112", { friendly_name: "Office Purifier Air quality index", device_class: "aqi" }), O);
+  add(st("sensor.office_monitor_pm25", "8", { friendly_name: "Office Monitor PM2.5", device_class: "pm25", unit_of_measurement: "µg/m³" }), O);
+  add(st("sensor.office_monitor_pm10", "61", { friendly_name: "Office Monitor PM10", device_class: "pm10", unit_of_measurement: "µg/m³" }), O);
+  add(st("sensor.office_monitor_co2", "780", { friendly_name: "Office Monitor CO2", device_class: "carbon_dioxide", unit_of_measurement: "ppm" }), O);
+  add(st("sensor.office_monitor_voc", "180", { friendly_name: "Office Monitor VOC", device_class: "volatile_organic_compounds_parts", unit_of_measurement: "ppb" }), O);
+  add(st("sensor.office_monitor_radon", "38", { friendly_name: "Office Monitor Radon", unit_of_measurement: "Bq/m³", icon: "mdi:radioactive" }), O);
+  add(st("binary_sensor.office_presence", "on", { friendly_name: "Office Presence", device_class: "presence" }, 25), O);
+
+  // Hallway: dumb lights on a relay (issue #2). The relay switch is the main light.
+  add(st("switch.hallway_relay", "on", { friendly_name: "Hallway Lights Relay" }, 6), "hallway");
+  add(st("binary_sensor.hallway_motion", "on", { friendly_name: "Hallway Motion", device_class: "motion" }, 1), "hallway");
+  // Study: a template light whose colour templates render nothing (None), with an RGB colour on ?tpl=rgb.
+  const tplRgb = new URLSearchParams(location.search).get("tpl") === "rgb";
+  add(st("light.study_template", "on", tplRgb
+    ? { friendly_name: "Study Lamp", color_mode: "rgb", rgb_color: ["255", "120", "40"], brightness: "200", supported_color_modes: ["rgb"] }
+    : { friendly_name: "Study Lamp", color_mode: "rgb", rgb_color: [null, null, null], hs_color: null, brightness: "None", supported_color_modes: ["rgb"] }, 12), "study");
+  add(st("sensor.study_temperature", "21.4", { friendly_name: "Study Temperature", device_class: "temperature", unit_of_measurement: "°C" }), "study");
+
+  // Room modes (issue #3): the kitchen's dropdown helper, "Normal" being "no mode".
+  add(st("input_select.kitchen_mode", "Cooking", { friendly_name: "Kitchen Mode", options: ["Normal", "Cooking", "Movie", "Bedtime"] }, 3), "kitchen");
+  add(st("select.bedroom_mode", "Sleep", { friendly_name: "Bedroom Mode", options: ["Normal", "Reading", "Sleep"] }, 60), "bedroom");
+
   const areas = {
     living_room: { area_id: "living_room", name: "Living Room", icon: "mdi:sofa" },
     kitchen: { area_id: "kitchen", name: "Kitchen", icon: "mdi:stove" },
     bedroom: { area_id: "bedroom", name: "Bedroom", icon: "mdi:bed" },
     hallway: { area_id: "hallway", name: "Hallway" },
     den: { area_id: "den", name: "Den", icon: "mdi:desk" },
+    office: { area_id: "office", name: "Office", icon: "mdi:air-purifier" },
+    study: { area_id: "study", name: "Study" },
   };
 
   const calls = [];
@@ -211,6 +240,15 @@
     { type: "custom:area-pulse-card", area: "bedroom", layout: "compact", show_inactive: true, actions: [{ preset: "lights_toggle" }, { preset: "covers_close" }, { preset: "everything_off" }] },
     // The original look: one colour per kind of device, every chip in two rows.
     { type: "custom:area-pulse-card", area: "living_room", sensor_classes: ["carbon_dioxide", "illuminance"], chip_colors: "category", max_chips: 0, actions: [{ preset: "lights_toggle" }] },
+    // Issue #1: every air-quality class, and a reading with no device class added by entity.
+    { type: "custom:area-pulse-card", area: "office", sensor_classes: ["aqi", "pm25", "pm10", "carbon_dioxide", "volatile_organic_compounds_parts"], sensor_entities: ["sensor.office_monitor_radon"] },
+    // Issue #2: a relay switch as the main light, and a template light with broken colour attributes (?tpl=rgb: with a colour).
+    { type: "custom:area-pulse-card", area: "hallway", main_light: "switch.hallway_relay" },
+    { type: "custom:area-pulse-card", area: "study", main_light: "light.study_template" },
+    // Issue #3: room modes, named with "back to normal", then icons only, then compact.
+    { type: "custom:area-pulse-card", area: "kitchen", mode_entity: "input_select.kitchen_mode", mode_default: "Normal", actions: [{ preset: "lights_toggle" }] },
+    { type: "custom:area-pulse-card", area: "kitchen", mode_entity: "input_select.kitchen_mode", show_mode_names: false, modes: [{ option: "Normal" }, { option: "Cooking", icon: "mdi:chef-hat", color: "deep-orange" }, { option: "Movie" }, { option: "Bedtime" }] },
+    { type: "custom:area-pulse-card", area: "bedroom", layout: "compact", mode_entity: "select.bedroom_mode", mode_default: "Normal", actions: [{ preset: "lights_toggle" }, { preset: "covers_close" }] },
   ];
   const grid = document.querySelector(".grid");
   window.cards = configs.map((c) => {

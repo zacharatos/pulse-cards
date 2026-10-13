@@ -20,7 +20,9 @@ import {
   DEFAULT_GROUPS,
   DEFAULT_MAX_CHIPS,
   DEFAULT_TOP_GROUPS,
+  entityReadings,
   findMainLight,
+  glowAlpha,
   indexArea,
   lightColor,
   pickChips,
@@ -45,6 +47,7 @@ import {
   type RoomModel,
   type RoomSection,
 } from "./room";
+import { resolveModes, type ResolvedMode } from "./modes";
 import { actionHandler, type ActionKind } from "./action-handler";
 import { localize } from "./localize";
 import { cardStyles } from "./styles";
@@ -94,11 +97,19 @@ const GROUP_META: Record<GroupId, GroupMeta> = {
 
 const SENSOR_ICONS: Record<string, string> = {
   illuminance: "mdi:brightness-5",
+  aqi: "mdi:leaf",
   carbon_dioxide: "mdi:molecule-co2",
+  carbon_monoxide: "mdi:molecule-co",
+  pm1: "mdi:grain",
   pm25: "mdi:blur",
   pm10: "mdi:blur-radial",
   volatile_organic_compounds: "mdi:air-filter",
   volatile_organic_compounds_parts: "mdi:air-filter",
+  nitrogen_dioxide: "mdi:molecule",
+  nitrogen_monoxide: "mdi:molecule",
+  nitrous_oxide: "mdi:molecule",
+  ozone: "mdi:molecule",
+  sulphur_dioxide: "mdi:molecule",
   pressure: "mdi:gauge",
   power: "mdi:flash",
   energy: "mdi:lightning-bolt",
@@ -186,6 +197,9 @@ export class AreaPulseCard extends LitElement {
       throw new Error("`chip_colors` must be `state` or `category`");
     if (config.max_chips !== undefined && !(Number.isInteger(config.max_chips) && config.max_chips >= 0))
       throw new Error("`max_chips` must be a whole number, 0 or more (0 shows every chip)");
+    if (config.sensor_entities !== undefined && !Array.isArray(config.sensor_entities))
+      throw new Error("`sensor_entities` must be a list of entities");
+    if (config.modes !== undefined && !Array.isArray(config.modes)) throw new Error("`modes` must be a list");
     this._config = { ...config };
     this.layout = config.layout === "compact" ? "compact" : "default";
     this._popup = undefined;
@@ -195,7 +209,8 @@ export class AreaPulseCard extends LitElement {
 
   getCardSize(): number {
     const actions = this._config?.actions?.length ? 1 : 0;
-    return this.layout === "compact" ? 2 + actions : 3 + actions;
+    const modes = this._config?.mode_entity || this._config?.modes?.length ? 1 : 0;
+    return (this.layout === "compact" ? 2 : 3) + actions + modes;
   }
 
   getGridOptions() {
@@ -298,9 +313,10 @@ export class AreaPulseCard extends LitElement {
     const groups = buildGroups(hass, config, index);
     const temperature = reading(hass, index, "temperature", config.temperature_entity ?? area.temperature_entity_id);
     const humidity = reading(hass, index, "humidity", config.humidity_entity ?? area.humidity_entity_id);
-    const extras = (config.sensor_classes ?? [])
-      .map((c) => reading(hass, index, c))
-      .filter((r): r is Reading => !!r);
+    const extras = [
+      ...(config.sensor_classes ?? []).map((c) => reading(hass, index, c)).filter((r): r is Reading => !!r),
+      ...entityReadings(hass, config.sensor_entities),
+    ];
     const actions = (config.actions ?? []).map((a) => resolveAction(hass, a, area, groups, index, !!this._labelFilter?.active));
 
     const presence = groups.presence;
@@ -321,8 +337,7 @@ export class AreaPulseCard extends LitElement {
       : (groups.lights?.active ?? []).map((id) => hass.states[id]).find((s) => !!s);
     // A light without a colour of its own glows in the theme's "on" colour (--apc-glow-rgb in styles.ts).
     const glowRgb = glowSource ? lightColor(glowSource) : undefined;
-    const brightness = Number(glowSource?.attributes.brightness ?? 255);
-    const glowStrength = 0.1 + 0.12 * Math.min(1, Math.max(0, brightness / 255));
+    const glowStrength = glowAlpha(glowSource);
     const mainRgb = mainOn ? lightColor(mainState) : undefined;
 
     const cardStyle: Record<string, string> = {};
@@ -390,6 +405,7 @@ export class AreaPulseCard extends LitElement {
           ${this._renderLabelHint(index)}
           ${alerts.length ? keyed(alerts.join(), this._renderAlertBanner(alerts)) : nothing}
           ${this._renderChips(chips)}
+          ${this._renderModes()}
           ${actions.length ? this._renderActions(actions) : nothing}
         </div>
       </ha-card>
@@ -473,12 +489,16 @@ export class AreaPulseCard extends LitElement {
                 : nothing}
               ${extras.map((r) => {
                 const severity = readingSeverity(r);
+                const s = this.hass!.states[r.entities[0]];
+                // A sensor named by entity may have no device class: its own icon, then the class's, then a gauge.
+                const pinned = config.sensor_entities?.includes(r.entities[0]) && r.entities.length === 1;
+                const icon = (pinned ? (s?.attributes.icon as string | undefined) : undefined) ?? SENSOR_ICONS[r.deviceClass] ?? "mdi:gauge";
                 return html`<div
                   class="hum reading ${severity}"
-                  title=${this._entityName(this.hass!.states[r.entities[0]])}
+                  title=${this._entityName(s)}
                   @click=${(e: Event) => this._moreInfo(r.entities[0], e)}
                 >
-                  <ha-icon .icon=${SENSOR_ICONS[r.deviceClass] ?? "mdi:gauge"}></ha-icon>${this._num(r.value, Math.abs(r.value) >= 100 ? 0 : 1)}${r.unit ? ` ${r.unit}` : ""}
+                  <ha-icon .icon=${icon}></ha-icon>${this._num(r.value, Math.abs(r.value) >= 100 ? 0 : 1)}${r.unit ? ` ${r.unit}` : ""}
                 </div>`;
               })}
             </div>`
@@ -682,6 +702,39 @@ export class AreaPulseCard extends LitElement {
           `
         )}
       </div>
+    `;
+  }
+
+  /** Room modes: a segmented row like Home Pulse's house modes, the current mode lit. Off until configured. */
+  private _renderModes() {
+    const config = this._config!;
+    if (!config.mode_entity && !config.modes?.length) return nothing;
+    const modes = resolveModes(this.hass!, config);
+    if (!modes.length) return nothing;
+    return html`
+      <div class="modes" role="group">
+        ${modes.map((m) => this._renderMode(m))}
+      </div>
+    `;
+  }
+
+  private _renderMode(m: ResolvedMode) {
+    const named = this._config!.show_mode_names !== false && !!m.name;
+    const title = m.resetTo !== undefined ? `${m.name} · ${localize(this.hass, "mode_back_to", { mode: m.resetTo })}` : m.name;
+    return html`
+      <button
+        class=${classMap({ mode: true, active: m.active, "icon-only": !named })}
+        style=${styleMap({ "--c": m.color ? cssColor(m.color) : "var(--apc-accent)" })}
+        aria-pressed=${String(m.active)}
+        aria-label=${title}
+        title=${title}
+        ${actionHandler({ hasHold: !!m.hold_action })}
+        @apc-action=${(ev: CustomEvent<{ action: ActionKind }>) =>
+          this._fireAction({ entity: m.entity, tap_action: m.tap_action, hold_action: m.hold_action }, ev.detail.action)}
+      >
+        <ha-icon .icon=${m.icon}></ha-icon>
+        ${named ? html`<span class="mode-name">${m.name}</span>` : nothing}
+      </button>
     `;
   }
 

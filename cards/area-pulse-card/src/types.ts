@@ -120,6 +120,23 @@ export interface QuickActionConfig {
   color?: string;
 }
 
+/** One room mode button (the same shape as Home Pulse Card's house modes). */
+export interface ModeConfig {
+  name?: string;
+  icon?: string;
+  /** Colour of the mode's icon while it is active. Default: the card's accent colour. */
+  color?: string;
+  /**
+   * Option of `mode_entity` this button selects. Defaults to `name` when `mode_entity` is set, so a mode
+   * without a name needs it.
+   */
+  option?: string;
+  /** A scene, script, input_boolean or switch this button runs or toggles (instead of an option). */
+  entity?: string;
+  tap_action?: ActionConfig;
+  hold_action?: ActionConfig;
+}
+
 export type GroupId =
   | "presence"
   | "motion"
@@ -149,6 +166,8 @@ export interface AreaPulseCardConfig {
   temperature_entity?: string;
   humidity_entity?: string;
   sensor_classes?: string[];
+  /** Numeric sensors shown as readings in the climate block by entity, with or without a device class. */
+  sensor_entities?: string[];
   alert_classes?: string[];
   /** All status chips to show, in order. */
   groups?: GroupId[];
@@ -162,7 +181,10 @@ export interface AreaPulseCardConfig {
   chip_colors?: "state" | "category";
   /** Chips on the card face before the rest collapse into a "+N" chip that opens the room popup (default 3, 0 = all). */
   max_chips?: number;
-  /** Light toggled by the area icon and used for the glow colour. Auto-detected when omitted. */
+  /**
+   * Light toggled by the area icon and used for the glow colour. Auto-detected when omitted. May also be a
+   * `switch` or `input_boolean` (a light on a relay): it then glows in the theme's "on" colour.
+   */
   main_light?: string;
   /** Set to false to keep the area icon passive. */
   link_main_light?: boolean;
@@ -185,6 +207,16 @@ export interface AreaPulseCardConfig {
   comfort_humidity?: [number, number] | { min?: number; max?: number };
   battery_threshold?: number;
   actions?: QuickActionConfig[];
+  /** Room modes: an input_select/select, one button per option unless `modes` lists them. Off when unset. */
+  mode_entity?: string;
+  modes?: ModeConfig[];
+  /** Show the names on the mode buttons (default true). `false` draws icons only; the name stays the tooltip. */
+  show_mode_names?: boolean;
+  /**
+   * The option of `mode_entity` that means "back to normal". It gets no button of its own: tapping the lit
+   * mode again selects it, and while it is the current option no mode is lit.
+   */
+  mode_default?: string;
   tap_action?: ActionConfig;
   hold_action?: ActionConfig;
   double_tap_action?: ActionConfig;
