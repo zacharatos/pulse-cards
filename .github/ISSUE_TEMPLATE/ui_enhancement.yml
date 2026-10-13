@@ -1,0 +1,105 @@
+name: 🎨 Looks or feels off
+description: Nothing is broken, but something looks wrong, is hard to read, crowded, or awkward to use.
+title: "[Card] What looks or feels off"
+labels: [ui, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The cards are meant to be calm: little colour, nothing that moves without a reason, everything in its place. If something breaks that promise in your home, show it here.
+
+  - type: dropdown
+    id: card
+    attributes:
+      label: Which card?
+      multiple: true
+      options:
+        - Area Pulse Card
+        - Home Pulse Card
+        - Home Pulse Shortcuts
+        - Tile Pulse Card
+        - Scene Pulse Card
+        - The visual editor of a card
+        - All of them
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem is it?
+      multiple: true
+      options:
+        - Hard to read (contrast, size, truncated text)
+        - Crowded or noisy
+        - Doesn't fit (overflow, wrong size, cut off)
+        - Doesn't match Home Assistant or the other Pulse cards
+        - Hard to tap or use (on a phone, a wall tablet…)
+        - Animation or motion
+        - Wording or translation
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: Drag and drop it here. If you can, mark the part you mean. Please hide private names first.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What bothers you, and how would you like it to look or behave?
+      placeholder: "On my phone the climate reading and the lights chip overlap. I'd rather see the reading on its own line."
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and screen
+      placeholder: "Pixel 8, portrait, companion app / 10\" wall tablet, Fully Kiosk / 1440p desktop"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: theme
+    attributes:
+      label: Theme
+      options:
+        - Home Assistant default (light)
+        - Home Assistant default (dark)
+        - Pulse
+        - Pulse Glass
+        - Pulse Tonal
+        - Another theme (please name it below)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: view
+    attributes:
+      label: Dashboard view type
+      options:
+        - Sections
+        - Masonry
+        - Panel
+        - Sidebar
+        - Not sure
+
+  - type: textarea
+    id: config
+    attributes:
+      label: The card's YAML (optional)
+      render: yaml
+
+  - type: input
+    id: version
+    attributes:
+      label: Pulse Cards and Home Assistant versions
+      placeholder: "Pulse Cards v1.1.0, HA 2026.10.1"
+    validations:
+      required: true

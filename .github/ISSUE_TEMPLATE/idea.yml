@@ -1,18 +1,18 @@
-name: An idea
+name: 💡 An idea
 description: Something a card could do for your home, or a new card.
-labels: [idea]
+title: "[Card] What you'd like to do"
+labels: [idea, needs-triage]
 body:
-  - type: textarea
-    id: need
+  - type: markdown
     attributes:
-      label: What do you want to see or do, and why?
-      description: Describe the moment in your day it would help with. The need matters more than the exact solution.
-    validations:
-      required: true
+      value: |
+        The cards are built for real homes, so the most useful ideas start from a moment in your day, not from a feature list. Tell me the moment, and how you would like it to go.
+
   - type: dropdown
     id: card
     attributes:
       label: Which card?
+      multiple: true
       options:
         - Area Pulse Card
         - Home Pulse Card
@@ -21,3 +21,52 @@ body:
         - Scene Pulse Card
         - A new card
         - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: need
+    attributes:
+      label: What do you want to see or do, and why?
+      description: Describe the moment in your day it would help with. The need matters more than the exact solution.
+      placeholder: "When I leave for work I glance at the dashboard to check nothing's left on. I'd like the room card to tell me a room has had its lights on for a while with nobody in it."
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you do it today?
+      description: Another card, an automation, nothing at all… This tells me how big the gap is.
+      placeholder: "A conditional card with a template sensor per room. It works, but it's twelve cards."
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: How could it look or work? (optional)
+      description: A sketch, a screenshot of something similar, or the YAML you'd like to write.
+      placeholder: |
+        type: custom:area-pulse-card
+        area: living_room
+        nudges:
+          empty_room_lights: 20min
+
+  - type: dropdown
+    id: importance
+    attributes:
+      label: How much would it change your dashboard?
+      options:
+        - Nice to have
+        - I'd use it every day
+        - It's what keeps me from using the card
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Helping out
+      options:
+        - label: I can test a pre-release of this in my own Home Assistant.
+        - label: I searched the open issues and this hasn't been suggested yet.
+          required: true

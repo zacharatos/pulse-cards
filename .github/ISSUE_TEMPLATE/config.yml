@@ -1,5 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Questions and showing off your dashboard
-    url: https://community.home-assistant.io/search?q=%22Pulse%20Cards%22
+  - name: 💬 Questions, help with setup, showing off your dashboard
+    url: https://community.home-assistant.io/t/pulse-cards-calm-dashboard-cards-for-rooms-the-home-overview-modes-and-scenes-one-hacs-download/1028304
     about: The Pulse Cards thread on the Home Assistant community forum.
+  - name: 🎨 Something about the Pulse themes (Pulse, Pulse Glass, Pulse Tonal)
+    url: https://github.com/zacharatos/pulse-theme/issues
+    about: The themes live in their own repository.
+  - name: 📦 Stock Pulse (home inventory) or Flow Pulse (automations)
+    url: https://github.com/zacharatos
+    about: These are integrations with their own repositories; open the issue there.

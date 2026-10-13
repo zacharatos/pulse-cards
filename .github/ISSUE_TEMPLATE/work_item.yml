@@ -1,0 +1,172 @@
+name: 🛠️ Work item (maintainer and AI agents)
+description: A piece of work ready to build, written so an agent can pick it up and Timos can review it. Users, please use the other forms.
+title: "[card] verb + what, e.g. [tile] Long-press a button for more options"
+labels: [work-item, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **One issue = one change that ships in one release.** If it needs two releases or touches two unrelated things, split it.
+        Agents: read the root `AGENTS.md` and `cards/<card>/AGENTS.md` before you start. **Never commit, tag or push.** End with the hand-off from `AGENTS.md` and link this issue in it.
+        Title scope = the commit scope: `area`, `home`, `shortcuts`, `tile`, `scene`, or none for repo-wide (`build`, `ci`, `docs`).
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - Feature
+        - Bug fix
+        - UI enhancement
+        - Refactor (no visible change)
+        - Real-house test
+        - Docs
+        - CI / build / release
+    validations:
+      required: true
+
+  - type: dropdown
+    id: card
+    attributes:
+      label: Card(s)
+      multiple: true
+      options:
+        - Area Pulse Card
+        - Home Pulse Card
+        - Home Pulse Shortcuts
+        - Tile Pulse Card
+        - Scene Pulse Card
+        - All cards / the bundle
+        - A new card
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P1 — broken for someone, or blocks a release
+        - P2 — next release
+        - P3 — someday (an idea worth keeping)
+    validations:
+      required: true
+
+  - type: textarea
+    id: source
+    attributes:
+      label: Source
+      description: Where this came from. Link the forum post, Reddit comment or user issue, and quote the key sentence. "Own idea" or "AGENTS.md → Where it can evolve" is fine too.
+      placeholder: |
+        - Reddit, u/someone: "I'd love the tile buttons to …" (link)
+        - Duplicate of / related to #12
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: The moment in someone's day it helps with. One or two sentences, or "As … I want … so that …".
+      placeholder: "As someone with a purifier that has 9 modes, I want the less common ones in a menu, so the row stays calm and I can still reach them."
+    validations:
+      required: true
+
+  - type: textarea
+    id: now
+    attributes:
+      label: Now
+      description: What happens today. For a bug, the steps, what you see, and what you expected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: wanted
+    attributes:
+      label: Wanted
+      description: How it should behave and look when it's done, light and dark, phone and desktop. Mention the native HA piece to reuse first, if there is one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Config sketch
+      description: The YAML a user would write. New keys are public API; name them carefully. Leave empty if nothing changes in the config.
+      render: yaml
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Acceptance criteria. Each one something Timos can check in a minute.
+      value: |
+        - [ ] Zero config still works: the card with no new option looks and behaves exactly as before
+        - [ ]
+        - [ ] Visual editor: the new option is there, and the YAML round-trips
+        - [ ] English and Greek strings
+    validations:
+      required: true
+
+  - type: textarea
+    id: out
+    attributes:
+      label: Not part of this
+      description: What is deliberately left out, so the change stays small.
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Where in the code
+      description: The files that will most likely change, and the rule in the card's AGENTS.md that matters most here.
+      placeholder: |
+        - cards/tile-pulse-card/src/tile.ts — pure logic + test
+        - cards/tile-pulse-card/src/tile-pulse-card.ts — render
+        - cards/tile-pulse-card/src/editor.ts, localize.ts
+        - AGENTS.md rule: "Zero config first"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks before hand-off
+      description: Agents tick these in the hand-off, not here.
+      options:
+        - label: "`npm run typecheck`, `npm test`, `npm run build`, `node scripts/check-version.mjs` pass"
+        - label: "A unit test covers the new logic (pure module, `node:test`)"
+        - label: "Harness checked: light, dark, `?lang=el`, phone width, each Pulse theme; a harness scenario added for anything visible"
+        - label: "The other cards' harnesses still look the same (if anything shared changed)"
+
+  - type: textarea
+    id: realha
+    attributes:
+      label: Try in a real Home Assistant
+      description: What only the real house can prove (see "Things only a real Home Assistant can prove" in the card's AGENTS.md).
+      placeholder: |
+        - [ ] Companion app on the phone
+        - [ ] The visual editor in the real dashboard editor
+
+  - type: dropdown
+    id: release
+    attributes:
+      label: Release impact
+      description: From the user's side. Major = something stops working or the user has to act. Minor = new and opt-in. Patch = nothing new to learn.
+      options:
+        - Patch
+        - Minor
+        - Major (breaking; needs Timos's say-so)
+        - Not sure yet
+    validations:
+      required: true
+
+  - type: textarea
+    id: changelog
+    attributes:
+      label: Changelog line
+      description: How the user will read it in CHANGELOG.md, under the card's heading.
+      placeholder: "**Added:** a long press on a button opens the rest of the entity's options in a menu."
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes for whoever builds it
+      description: Open questions, decisions already taken, pitfalls, links to HA docs or similar cards.

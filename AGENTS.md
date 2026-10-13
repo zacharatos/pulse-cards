@@ -77,7 +77,7 @@ Don't write a commit message unless he asks for one. If he does, offer it as a s
 | `scripts/changelog-notes.mjs` | Prints one version's `CHANGELOG.md` section; the release body. |
 | `scripts/import-history.sh` | One-shot migration that brought in the four old repositories' history. Not part of the build. |
 | `docs/hero-dark.jpg`, `docs/hero-light.jpg` | The README's first image (Pulse Theme's `test/dashboard.html`, Pulse Cards only, 2×). Also the GitHub social preview and the launch post's images. |
-| `.github/ISSUE_TEMPLATE/` | Issue forms for bugs (asks for card, YAML, versions, browser, theme) and ideas (asks for the need first). `config.yml` links questions to the forum thread. |
+| `.github/ISSUE_TEMPLATE/` | Issue forms: *Something doesn't work* (bug), *Looks or feels off* (ui), *An idea*, and *Work item*, the one Timos and agents use to write up a change ready to build (why, wanted, done-when, files, checks, release impact). `config.yml` links questions to the forum thread and theme/integration issues to their repos. `scripts/labels.ps1` (PowerShell 7) creates the labels the forms and the backlog use. When an issue is your task, link it in the hand-off and tick its *Done when* there. |
 | `.github/workflows/validate.yml` | HACS validation; `npm ci`, typecheck, tests, build, "bundle is up to date", "versions agree". |
 | `.github/workflows/release.yml` | On a `v*` tag: tests, build, tag = version check, GitHub release with `dist/pulse-cards.js` and the changelog section. |
 
